@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'react-toastify';
-import { notificationService } from '@/services/api';
+import apiService from '@/services/api';
 
 interface NotificationState {
   permission: NotificationPermission | null;
@@ -50,154 +50,155 @@ export function useNotifications() {
       return false;
     }
 
-    if (permission.isGranted) {
-      return true;
+    if (permission.isDenied) {
+      toast.error('Les notifications ont été refusées. Veuillez autoriser les notifications dans les paramètres de votre navigateur.');
+      return false;
     }
 
     try {
       const result = await Notification.requestPermission();
-      const isGranted = result === 'granted';
-      
-      setPermission(prev => ({
-        ...prev,
-        permission: result as NotificationPermission,
-        isGranted,
+      const newState = {
+        permission: result,
+        isSupported: permission.isSupported,
+        isGranted: result === 'granted',
         isDenied: result === 'denied',
         isDefault: result === 'default',
-      }));
+      };
+      setPermission(newState);
 
-      if (isGranted) {
-        toast.success('Notifications activées !');
+      if (result === 'granted') {
+        toast.success('Notifications activées avec succès!');
+        return true;
       } else if (result === 'denied') {
-        toast.error('Notifications refusées. Vous pouvez les activer dans les paramètres du navigateur.');
+        toast.error('Les notifications ont été refusées');
+        return false;
       }
-
-      return isGranted;
+      return false;
     } catch (error) {
       console.error('Erreur lors de la demande de permission:', error);
-      toast.error('Erreur lors de l\'activation des notifications');
+      toast.error('Erreur lors de la demande de permission pour les notifications');
       return false;
     }
-  }, [permission.isSupported, permission.isGranted]);
+  }, [permission.isSupported, permission.isDenied]);
 
   // S'abonner aux notifications push
-  const subscribe = useCallback(async (): Promise<boolean> => {
+  const subscribe = useCallback(async () => {
     if (!permission.isGranted) {
-      const hasPermission = await requestPermission();
-      if (!hasPermission) return false;
+      toast.error('Veuillez d\'abord autoriser les notifications');
+      return;
     }
 
     setIsLoading(true);
-    
     try {
-      // Récupérer la clé publique VAPID
-      const { publicKey } = await notificationService.getVapidPublicKey();
-      
-      // Convertir la clé publique
-      const applicationServerKey = urlBase64ToUint8Array(publicKey);
-      
-      // Obtenir l'abonnement push
+      // Vérifier si un service worker est disponible
       const registration = await navigator.serviceWorker.ready;
-      const pushSubscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey,
-      });
+      
+      // Vérifier si une souscription existe déjà
+      let pushSubscription = await registration.pushManager.getSubscription();
+      
+      if (!pushSubscription) {
+        // Créer une nouvelle souscription
+        const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+        if (!vapidPublicKey) {
+          throw new Error('Clé VAPID publique manquante');
+        }
 
-      // Convertir l'abonnement en format utilisable
+        const convertedVapidKey = urlBase64ToUint8Array(vapidPublicKey);
+        pushSubscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: convertedVapidKey,
+        });
+      }
+
+      // Convertir la souscription en format JSON
+      const subscriptionJSON = pushSubscription.toJSON();
       const subscriptionData: PushSubscription = {
-        endpoint: pushSubscription.endpoint,
+        endpoint: subscriptionJSON.endpoint!,
         keys: {
-          p256dh: arrayBufferToBase64(pushSubscription.getKey('p256dh')!),
-          auth: arrayBufferToBase64(pushSubscription.getKey('auth')!),
+          p256dh: subscriptionJSON.keys!.p256dh,
+          auth: subscriptionJSON.keys!.auth,
         },
       };
 
-      // Envoyer l'abonnement au serveur
-      await notificationService.subscribe(subscriptionData);
+      // Envoyer la souscription au backend (à implémenter)
+      // await apiService.subscribeToNotifications(subscriptionData);
       
       setSubscription(subscriptionData);
-      toast.success('Abonnement aux notifications réussi !');
-      
-      return true;
+      toast.success('Abonnement aux notifications réussi!');
     } catch (error) {
-      console.error('Erreur lors de l\'abonnement:', error);
+      console.error('Erreur lors de l\'abonnement aux notifications:', error);
       toast.error('Erreur lors de l\'abonnement aux notifications');
-      return false;
     } finally {
       setIsLoading(false);
     }
-  }, [permission.isGranted, requestPermission]);
+  }, [permission.isGranted]);
 
   // Se désabonner des notifications push
-  const unsubscribe = useCallback(async (): Promise<boolean> => {
-    if (!subscription) return false;
-
+  const unsubscribe = useCallback(async () => {
     setIsLoading(true);
-    
     try {
-      await notificationService.unsubscribe(subscription.endpoint);
-      
-      // Se désabonner du service worker
       const registration = await navigator.serviceWorker.ready;
       const pushSubscription = await registration.pushManager.getSubscription();
       
       if (pushSubscription) {
         await pushSubscription.unsubscribe();
+        // Informer le backend (à implémenter)
+        // await apiService.unsubscribeFromNotifications();
+        setSubscription(null);
+        toast.success('Désabonnement des notifications réussi');
       }
-      
-      setSubscription(null);
-      toast.info('Désabonnement des notifications réussi');
-      
-      return true;
     } catch (error) {
       console.error('Erreur lors du désabonnement:', error);
-      toast.error('Erreur lors du désabonnement');
-      return false;
+      toast.error('Erreur lors du désabonnement des notifications');
     } finally {
       setIsLoading(false);
     }
-  }, [subscription]);
+  }, []);
 
   // Envoyer une notification de test
-  const sendTestNotification = useCallback(async (): Promise<boolean> => {
-    if (!subscription) {
-      toast.error('Aucun abonnement actif');
-      return false;
+  const sendTestNotification = useCallback(() => {
+    if (!permission.isGranted) {
+      toast.error('Veuillez d\'abord autoriser les notifications');
+      return;
     }
 
     try {
-      await notificationService.sendTestNotification('Test de notification FarmAlert IA');
-      toast.success('Notification de test envoyée !');
-      return true;
+      new Notification('FarmAlert - Test', {
+        body: 'Ceci est une notification de test',
+        icon: '/favicon.ico',
+        badge: '/favicon.ico',
+        tag: 'test-notification',
+      });
     } catch (error) {
       console.error('Erreur lors de l\'envoi de la notification de test:', error);
       toast.error('Erreur lors de l\'envoi de la notification de test');
-      return false;
     }
-  }, [subscription]);
+  }, [permission.isGranted]);
 
-  // Vérifier l'état de l'abonnement existant
+  // Vérifier si une souscription existe déjà
   const checkExistingSubscription = useCallback(async () => {
+    if (!permission.isGranted) return;
+
     try {
       const registration = await navigator.serviceWorker.ready;
-      const existingSubscription = await registration.pushManager.getSubscription();
+      const pushSubscription = await registration.pushManager.getSubscription();
       
-      if (existingSubscription) {
-        const subscriptionData: PushSubscription = {
-          endpoint: existingSubscription.endpoint,
+      if (pushSubscription) {
+        const subscriptionJSON = pushSubscription.toJSON();
+        setSubscription({
+          endpoint: subscriptionJSON.endpoint!,
           keys: {
-            p256dh: arrayBufferToBase64(existingSubscription.getKey('p256dh')!),
-            auth: arrayBufferToBase64(existingSubscription.getKey('auth')!),
+            p256dh: subscriptionJSON.keys!.p256dh,
+            auth: subscriptionJSON.keys!.auth,
           },
-        };
-        setSubscription(subscriptionData);
+        });
       }
     } catch (error) {
-      console.error('Erreur lors de la vérification de l\'abonnement existant:', error);
+      console.error('Erreur lors de la vérification de la souscription:', error);
     }
-  }, []);
+  }, [permission.isGranted]);
 
-  // Vérifier l'abonnement existant au montage
+  // Vérifier la souscription existante au montage
   useEffect(() => {
     if (permission.isGranted) {
       checkExistingSubscription();
@@ -229,6 +230,7 @@ function urlBase64ToUint8Array(base64String: string): ArrayBuffer {
   for (let i = 0; i < rawData.length; ++i) {
     outputArray[i] = rawData.charCodeAt(i);
   }
+
   return outputArray.buffer;
 }
 
