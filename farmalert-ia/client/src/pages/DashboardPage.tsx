@@ -27,3 +27,4 @@ export const DashboardPage: React.FC = () => {
     refreshFarms();
     refreshAlerts();
   }, [refreshFarms, refreshAlerts]);
+}
