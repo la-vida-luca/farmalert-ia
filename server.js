@@ -73,6 +73,7 @@ app.post('/api/auth/login', (req, res) => {
   res.json({ 
     success: true, 
     message: 'Login successful',
+    token: "sample-jwt-token-" + user.id,
     user: { id: user.id, email: user.email, name: user.name }
   });
 });
@@ -102,7 +103,7 @@ app.post('/api/farms', (req, res) => {
   
   res.status(201).json({ 
     success: true, 
-    farm: farm 
+    farm: newFarm 
   });
 });
 
