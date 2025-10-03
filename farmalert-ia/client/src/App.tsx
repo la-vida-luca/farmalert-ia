@@ -4,6 +4,8 @@ import axios from 'axios';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://farmalert-ia-production.up.railway.app';
 
+type ApiSuccess = { success?: boolean; token?: string };
+
 function AuthForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -21,15 +23,14 @@ function AuthForm() {
 
     try {
       const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
-      console.log('[Auth] submit', { isLogin, email });
+      console.log('[Auth] submit', { isLogin, email, endpoint, API_URL });
 
-      const response = await axios.post(`${API_URL}${endpoint}`, { email, password });
+      const response = await axios.post<ApiSuccess>(`${API_URL}${endpoint}`, { email, password });
       console.log('[Auth] response', response?.status, response?.data);
 
       if (isLogin) {
-        // Login expects a token
         if (response?.data?.token) {
-          localStorage.setItem('token', response.data.token);
+          localStorage.setItem('token', response.data.token as string);
           setIsAuthenticated(true);
           setMessage('Connexion réussie.');
         } else {
@@ -37,10 +38,8 @@ function AuthForm() {
           console.log('[Auth] missing token on login');
         }
       } else {
-        // Registration: consider success without token, success: true suffit
         if (response?.data?.success === true || response?.status === 200 || response?.status === 201) {
           setMessage('Inscription réussie. Vous pouvez maintenant vous connecter.');
-          // Optionally switch back to login mode
           setIsLogin(true);
         } else {
           setError("L'inscription n'a pas abouti.");
