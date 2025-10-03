@@ -1,30 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { useAuth } from '@/hooks/useAuth';
-import { useFarms } from '@/hooks/useFarms';
-import { useAlerts } from '@/hooks/useAlerts';
-import { AlertCard } from '@/components/AlertCard';
-import { formatDate } from '@/lib/utils';
-import {
-  Plus,
-  RefreshCw,
-  AlertTriangle,
-  Cloud,
-  MapPin,
-  Calendar
-} from 'lucide-react';
-import { Link } from 'react-router-dom';
+import React from 'react';
 
-export const DashboardPage: React.FC = () => {
-  const { user } = useAuth();
-  const { farms, loading: farmsLoading, refreshFarms } = useFarms();
-  const { alerts, activeAlerts, loading: alertsLoading, refreshAlerts } = useAlerts();
-  const [selectedFarm, setSelectedFarm] = useState<number | null>(null);
+interface DashboardPageProps {}
 
-  useEffect(() => {
-    refreshFarms();
-    refreshAlerts();
-  }, [refreshFarms, refreshAlerts]);
-}
+const DashboardPage: React.FC<DashboardPageProps> = () => {
+  return (
+    <div className="dashboard-container">
+      <h1>Dashboard</h1>
+      <div className="dashboard-content">
+        <p>Welcome to FarmAlert Dashboard</p>
+      </div>
+    </div>
+  );
+};
+
+export default DashboardPage;
