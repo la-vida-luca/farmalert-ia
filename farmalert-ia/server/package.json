@@ -8,8 +8,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc && npm run init-db",
     "test": "jest",
-    "init-db": "tsx src/utils/initDatabase.ts",
-    "postinstall": "npm run build"
+    "init-db": "tsx src/utils/initDatabase.ts"
   },
   "dependencies": {
     "express": "^4.18.2",
@@ -36,22 +35,8 @@
     "@types/node-cron": "^3.0.11",
     "@types/compression": "^1.7.5",
     "typescript": "^5.2.2",
-    "tsx": "^4.1.4",
-    "nodemon": "^3.0.2",
+    "tsx": "^4.6.2",
     "jest": "^29.7.0",
-    "supertest": "^6.3.3",
-    "@types/jest": "^29.5.8",
-    "@types/supertest": "^2.0.16"
-  },
-  "keywords": [
-    "agriculture",
-    "weather",
-    "alerts",
-    "api",
-    "nodejs",
-    "express",
-    "typescript"
-  ],
-  "author": "FarmAlert IA Team",
-  "license": "MIT"
+    "@types/jest": "^29.5.8"
+  }
 }
