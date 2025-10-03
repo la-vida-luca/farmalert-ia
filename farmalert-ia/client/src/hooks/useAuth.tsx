@@ -1,143 +1,143 @@
-import { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { User, LoginFormData, RegisterFormData } from '../types';
+import apiService from '../services/api';
 import { toast } from 'react-toastify';
-import { authService, setAuthToken, removeAuthToken } from '@/services/api';
-import type { AuthUser, LoginCredentials, RegisterData } from '@/types';
 
-// Types pour le contexte
-interface AuthState {
-  user: AuthUser | null;
+interface AuthContextType {
+  user: User | null;
   token: string | null;
-  isLoading: boolean;
-  isInitialized: boolean;
-}
-
-interface AuthContextType extends AuthState {
-  login: (credentials: LoginCredentials) => Promise<void>;
-  register: (data: RegisterData) => Promise<void>;
+  login: (data: LoginFormData) => Promise<void>;
+  register: (data: RegisterFormData) => Promise<void>;
   logout: () => void;
-  updateUser: (user: AuthUser) => void;
+  isLoading: boolean;
+  error: string | null;
 }
 
-// Actions du reducer
-type AuthAction =
-  | { type: 'SET_LOADING'; payload: boolean }
-  | { type: 'SET_USER'; payload: AuthUser | null }
-  | { type: 'SET_TOKEN'; payload: string | null }
-  | { type: 'SET_INITIALIZED'; payload: boolean }
-  | { type: 'LOGOUT' };
-
-// État initial
-const initialState: AuthState = {
-  user: null,
-  token: null,
-  isLoading: false,
-  isInitialized: false,
-};
-
-// Reducer
-const authReducer = (state: AuthState, action: AuthAction): AuthState => {
-  switch (action.type) {
-    case 'SET_LOADING':
-      return { ...state, isLoading: action.payload };
-    case 'SET_USER':
-      return { ...state, user: action.payload };
-    case 'SET_TOKEN':
-      return { ...state, token: action.payload };
-    case 'SET_INITIALIZED':
-      return { ...state, isInitialized: action.payload };
-    case 'LOGOUT':
-      return { ...initialState, isInitialized: true };
-    default:
-      return state;
-  }
-};
-
-// Contexte
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Provider
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(authReducer, initialState);
-
-  // Initialiser l'authentification au montage
-  useEffect(() => {
-    const initAuth = async () => {
-      const token = localStorage.getItem('token');
-      if (token) {
-        try {
-          dispatch({ type: 'SET_TOKEN', payload: token });
-          const user = await authService.getProfile();
-          dispatch({ type: 'SET_USER', payload: user });
-        } catch (error) {
-          removeAuthToken();
-          dispatch({ type: 'LOGOUT' });
-        }
-      }
-      dispatch({ type: 'SET_INITIALIZED', payload: true });
-    };
-
-    initAuth();
-  }, []);
-
-  // Fonctions du contexte
-  const login = async (credentials: LoginCredentials): Promise<void> => {
-    dispatch({ type: 'SET_LOADING', payload: true });
-    try {
-      const response = await authService.login(credentials);
-      setAuthToken(response.token);
-      dispatch({ type: 'SET_TOKEN', payload: response.token });
-      dispatch({ type: 'SET_USER', payload: response.user as AuthUser });
-      toast.success('Connexion réussie !');
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Erreur de connexion');
-      throw error;
-    } finally {
-      dispatch({ type: 'SET_LOADING', payload: false });
-    }
-  };
-
-  const register = async (data: RegisterData): Promise<void> => {
-    dispatch({ type: 'SET_LOADING', payload: true });
-    try {
-      const response = await authService.register(data);
-      setAuthToken(response.token);
-      dispatch({ type: 'SET_TOKEN', payload: response.token });
-      dispatch({ type: 'SET_USER', payload: response.user as AuthUser });
-      toast.success('Inscription réussie !');
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Erreur d\'inscription');
-      throw error;
-    } finally {
-      dispatch({ type: 'SET_LOADING', payload: false });
-    }
-  };
-
-  const logout = (): void => {
-    removeAuthToken();
-    dispatch({ type: 'LOGOUT' });
-    toast.info('Déconnexion réussie');
-  };
-
-  const updateUser = (user: AuthUser): void => {
-    dispatch({ type: 'SET_USER', payload: user });
-  };
-
-  const value: AuthContextType = {
-    ...state,
-    login,
-    register,
-    logout,
-    updateUser,
-  };
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-}
-
-// Hook pour utiliser le contexte
-export function useAuth(): AuthContextType {
+export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
+};
+
+interface AuthProviderProps {
+  children: ReactNode;
 }
+
+export const AuthProvider = ({ children }: AuthProviderProps) => {
+  const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Vérifier l'authentification au chargement
+  useEffect(() => {
+    const initAuth = async () => {
+      const storedToken = localStorage.getItem('token');
+      const storedUser = localStorage.getItem('user');
+
+      if (storedToken && storedUser) {
+        try {
+          setToken(storedToken);
+          setUser(JSON.parse(storedUser));
+          
+          // Vérifier que le token est toujours valide
+          await apiService.getProfile();
+        } catch (error) {
+          // Token invalide, nettoyer le localStorage
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          setToken(null);
+          setUser(null);
+        }
+      }
+      setIsLoading(false);
+    };
+
+    initAuth();
+  }, []);
+
+  const login = async (data: LoginFormData) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const response = await apiService.login(data);
+      
+      setToken(response.token);
+      setUser(response.user);
+      
+      localStorage.setItem('token', response.token);
+      localStorage.setItem('user', JSON.stringify(response.user));
+      
+      toast.success('Connexion réussie !');
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.error || 'Erreur de connexion';
+      setError(errorMessage);
+      toast.error(errorMessage);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const register = async (data: RegisterFormData) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const { confirmPassword, ...registerData } = data;
+      
+      if (data.password !== confirmPassword) {
+        throw new Error('Les mots de passe ne correspondent pas');
+      }
+
+      const response = await apiService.register(registerData);
+      
+      setToken(response.token);
+      setUser(response.user);
+      
+      localStorage.setItem('token', response.token);
+      localStorage.setItem('user', JSON.stringify(response.user));
+      
+      toast.success('Inscription réussie !');
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.error || error.message || 'Erreur d\'inscription';
+      setError(errorMessage);
+      toast.error(errorMessage);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const logout = () => {
+    setToken(null);
+    setUser(null);
+    setError(null);
+    
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    
+    toast.info('Déconnexion réussie');
+  };
+
+  const value: AuthContextType = {
+    user,
+    token,
+    login,
+    register,
+    logout,
+    isLoading,
+    error,
+  };
+
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
