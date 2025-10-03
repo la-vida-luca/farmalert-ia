@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'react-toastify';
 import { notificationService } from '@/services/api';
 
-interface NotificationPermission {
+interface NotificationState {
   permission: NotificationPermission | null;
   isSupported: boolean;
   isGranted: boolean;
@@ -19,7 +19,7 @@ interface PushSubscription {
 }
 
 export function useNotifications() {
-  const [permission, setPermission] = useState<NotificationPermission>({
+  const [permission, setPermission] = useState<NotificationState>({
     permission: null,
     isSupported: false,
     isGranted: false,
@@ -60,7 +60,7 @@ export function useNotifications() {
       
       setPermission(prev => ({
         ...prev,
-        permission: result,
+        permission: result as NotificationPermission,
         isGranted,
         isDenied: result === 'denied',
         isDefault: result === 'default',
@@ -217,7 +217,7 @@ export function useNotifications() {
 }
 
 // Fonctions utilitaires pour la conversion des clés
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
+function urlBase64ToUint8Array(base64String: string): ArrayBuffer {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
   const base64 = (base64String + padding)
     .replace(/-/g, '+')
@@ -229,7 +229,7 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   for (let i = 0; i < rawData.length; ++i) {
     outputArray[i] = rawData.charCodeAt(i);
   }
-  return outputArray;
+  return outputArray.buffer;
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
