@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_API_URL || 'https://farmalert-ia-production.up.railway.app';
+const API_URL = import.meta.env.VITE_API_URL || 'https://farmalert-ia-production.up.railway.app';
 
 function LoginPage() {
   const [email, setEmail] = useState('');
