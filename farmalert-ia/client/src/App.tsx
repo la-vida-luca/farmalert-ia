@@ -4,27 +4,61 @@ import axios from 'axios';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://farmalert-ia-production.up.railway.app';
 
-function LoginPage() {
+function AuthForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLogin, setIsLogin] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-    
+    setError(null);
+    setMessage(null);
+    setLoading(true);
+
     try {
       const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
+      console.log('[Auth] submit', { isLogin, email });
+
       const response = await axios.post(`${API_URL}${endpoint}`, { email, password });
-      
-      if (response.data.token) {
-        localStorage.setItem('token', response.data.token);
-        setIsAuthenticated(true);
+      console.log('[Auth] response', response?.status, response?.data);
+
+      if (isLogin) {
+        // Login expects a token
+        if (response?.data?.token) {
+          localStorage.setItem('token', response.data.token);
+          setIsAuthenticated(true);
+          setMessage('Connexion réussie.');
+        } else {
+          setError("Le serveur n'a pas renvoyé de jeton.");
+          console.log('[Auth] missing token on login');
+        }
+      } else {
+        // Registration: consider success without token, success: true suffit
+        if (response?.data?.success === true || response?.status === 200 || response?.status === 201) {
+          setMessage('Inscription réussie. Vous pouvez maintenant vous connecter.');
+          // Optionally switch back to login mode
+          setIsLogin(true);
+        } else {
+          setError("L'inscription n'a pas abouti.");
+          console.log('[Auth] unexpected register response', response?.data);
+        }
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Une erreur est survenue');
+      const msg = err?.response?.data?.message || err?.message || 'Une erreur est survenue';
+      setError(msg);
+      console.log('[Auth] error', {
+        message: err?.message,
+        code: err?.code,
+        status: err?.response?.status,
+        data: err?.response?.data,
+        url: `${API_URL}${isLogin ? '/api/auth/login' : '/api/auth/register'}`,
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -34,15 +68,6 @@ function LoginPage() {
         <div className="bg-white p-8 rounded-lg shadow-md">
           <h1 className="text-2xl font-bold mb-4">Bienvenue!</h1>
           <p>Vous êtes connecté avec succès.</p>
-          <button
-            onClick={() => {
-              localStorage.removeItem('token');
-              setIsAuthenticated(false);
-            }}
-            className="mt-4 w-full bg-red-500 text-white p-2 rounded hover:bg-red-600"
-          >
-            Déconnexion
-          </button>
         </div>
       </div>
     );
@@ -50,54 +75,76 @@ function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="bg-white p-8 rounded-lg shadow-md w-96">
-        <h1 className="text-2xl font-bold mb-6 text-center">
-          {isLogin ? 'Connexion' : 'Inscription'}
-        </h1>
-        
-        {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-            {error}
-          </div>
-        )}
-        
-        <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label className="block text-gray-700 mb-2">Email</label>
+      <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-sm">
+        <h1 className="text-xl font-bold mb-4">{isLogin ? 'Connexion' : 'Créer un compte'}</h1>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-1" htmlFor="email">Email</label>
             <input
+              id="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
+              className="w-full border rounded px-3 py-2"
+              placeholder="votre@email.com"
             />
           </div>
-          
-          <div className="mb-6">
-            <label className="block text-gray-700 mb-2">Mot de passe</label>
+
+          <div>
+            <label className="block text-sm font-medium mb-1" htmlFor="password">Mot de passe</label>
             <input
+              id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
+              className="w-full border rounded px-3 py-2"
+              placeholder="••••••••"
             />
           </div>
-          
+
+          {error && (
+            <div className="text-red-600 text-sm" role="alert">
+              {error}
+            </div>
+          )}
+
+          {message && (
+            <div className="text-green-700 text-sm">
+              {message}
+            </div>
+          )}
+
           <button
             type="submit"
-            className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600 transition"
+            disabled={loading}
+            className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 disabled:opacity-50"
           >
-            {isLogin ? 'Se connecter' : "S'inscrire"}
+            {loading ? 'Veuillez patienter…' : (isLogin ? 'Se connecter' : "S'inscrire")}
           </button>
         </form>
-        
-        <button
-          onClick={() => setIsLogin(!isLogin)}
-          className="w-full mt-4 text-blue-500 hover:underline"
-        >
-          {isLogin ? "Pas de compte? S'inscrire" : 'Déjà un compte? Se connecter'}
-        </button>
+
+        <div className="text-sm mt-4">
+          {isLogin ? (
+            <button
+              className="text-blue-600 hover:underline"
+              onClick={() => { setIsLogin(false); setError(null); setMessage(null); }}
+              type="button"
+            >
+              Pas de compte ? Créer un compte
+            </button>
+          ) : (
+            <button
+              className="text-blue-600 hover:underline"
+              onClick={() => { setIsLogin(true); setError(null); setMessage(null); }}
+              type="button"
+            >
+              Déjà un compte ? Se connecter
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -107,7 +154,7 @@ function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<LoginPage />} />
+        <Route path="/" element={<AuthForm />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>
