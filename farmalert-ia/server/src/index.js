@@ -4,7 +4,6 @@ const helmet = require('helmet');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
-
 const logger = require('./utils/logger');
 const { initDatabase } = require('./utils/database');
 const authRoutes = require('./routes/auth');
@@ -16,7 +15,15 @@ const notificationsRoutes = require('./routes/notifications');
 const { startWeatherScheduler } = require('./services/weatherScheduler');
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+
+// Debug: Afficher les variables d'environnement
+console.log('=== DEBUG RAILWAY PORT ===');
+console.log('process.env.PORT:', process.env.PORT);
+console.log('process.env.NODE_ENV:', process.env.NODE_ENV);
+
+const PORT = process.env.PORT || 3000;
+console.log('Port final utilisé:', PORT);
+console.log('========================');
 
 // Middleware de sécurité
 app.use(helmet());
@@ -30,6 +37,7 @@ const limiter = rateLimit({
     error: 'Trop de requêtes depuis cette IP, veuillez réessayer plus tard.'
   }
 });
+
 app.use('/api/', limiter);
 
 // CORS
@@ -111,19 +119,30 @@ app.use('*', (req, res) => {
 // Initialisation de la base de données et démarrage du serveur
 async function startServer() {
   try {
+    console.log('=== DÉMARRAGE DU SERVEUR ===');
+    console.log('Initialisation de la base de données...');
+    
     await initDatabase();
     logger.info('Base de données initialisée avec succès');
+    console.log('✓ Base de données initialisée');
     
     // Démarrer le scheduler météo
     startWeatherScheduler();
     logger.info('Scheduler météo démarré');
+    console.log('✓ Scheduler météo démarré');
     
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log('\n🚀 SERVEUR DÉMARRÉ AVEC SUCCÈS!');
       logger.info(`🚀 Serveur FarmAlert IA démarré sur le port ${PORT}`);
       logger.info(`📊 Environnement: ${process.env.NODE_ENV}`);
       logger.info(`🌐 API disponible sur: http://localhost:${PORT}`);
+      console.log(`📊 Environnement: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`🌐 Serveur écoute sur le port: ${PORT}`);
+      console.log(`🌐 API disponible sur: http://localhost:${PORT}`);
+      console.log('===========================\n');
     });
   } catch (error) {
+    console.error('❌ ERREUR LORS DU DÉMARRAGE:', error);
     logger.error('Erreur lors du démarrage du serveur:', error);
     process.exit(1);
   }
@@ -131,11 +150,13 @@ async function startServer() {
 
 // Gestion des signaux de fermeture
 process.on('SIGTERM', () => {
+  console.log('\n⚠️  Signal SIGTERM reçu, fermeture du serveur...');
   logger.info('Signal SIGTERM reçu, fermeture du serveur...');
   process.exit(0);
 });
 
 process.on('SIGINT', () => {
+  console.log('\n⚠️  Signal SIGINT reçu, fermeture du serveur...');
   logger.info('Signal SIGINT reçu, fermeture du serveur...');
   process.exit(0);
 });
