@@ -19,6 +19,7 @@ export interface Farm {
   city: string;
   postalCode: string;
   region: string;
+  location: string;
   farmType: 'cereals' | 'dairy' | 'organic' | 'livestock' | 'vegetables' | 'fruits';
   size: number;
   createdAt: string;

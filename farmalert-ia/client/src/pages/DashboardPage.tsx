@@ -1,8 +1,6 @@
 import React from 'react';
 
-interface DashboardPageProps {}
-
-const DashboardPage: React.FC<DashboardPageProps> = () => {
+export const DashboardPage: React.FC = () => {
   return (
     <div className="dashboard-container">
       <h1>Dashboard</h1>
@@ -13,4 +11,3 @@ const DashboardPage: React.FC<DashboardPageProps> = () => {
   );
 };
 
-export default DashboardPage;

@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'react-toastify';
-import apiService from '@/services/api';
 
 interface NotificationState {
   permission: NotificationPermission | null;
@@ -121,7 +120,6 @@ export function useNotifications() {
       };
 
       // Envoyer la souscription au backend (à implémenter)
-      // await apiService.subscribeToNotifications(subscriptionData);
       
       setSubscription(subscriptionData);
       toast.success('Abonnement aux notifications réussi!');
@@ -143,7 +141,6 @@ export function useNotifications() {
       if (pushSubscription) {
         await pushSubscription.unsubscribe();
         // Informer le backend (à implémenter)
-        // await apiService.unsubscribeFromNotifications();
         setSubscription(null);
         toast.success('Désabonnement des notifications réussi');
       }
@@ -234,14 +231,6 @@ function urlBase64ToUint8Array(base64String: string): ArrayBuffer {
   return outputArray.buffer;
 }
 
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return window.btoa(binary);
-}
 
 // Hook pour afficher les notifications toast
 export function useToastNotifications() {
