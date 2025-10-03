@@ -1,116 +1,116 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { ToastContainer } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
+import axios from 'axios';
 
-import { AuthProvider, useAuth } from '@/hooks/useAuth';
-import { LoginPage } from '@/pages/LoginPage';
-import { RegisterPage } from '@/pages/RegisterPage';
-import { DashboardPage } from '@/pages/DashboardPage';
+const API_URL = process.env.REACT_APP_API_URL || 'https://farmalert-ia-production.up.railway.app';
 
-// Composant pour protéger les routes
-const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, isLoading } = useAuth();
+function LoginPage() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isLogin, setIsLogin] = useState(true);
+  const [error, setError] = useState('');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  if (isLoading) {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    
+    try {
+      const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
+      const response = await axios.post(`${API_URL}${endpoint}`, { email, password });
+      
+      if (response.data.token) {
+        localStorage.setItem('token', response.data.token);
+        setIsAuthenticated(true);
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Une erreur est survenue');
+    }
+  };
+
+  if (isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-farm-green"></div>
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <div className="bg-white p-8 rounded-lg shadow-md">
+          <h1 className="text-2xl font-bold mb-4">Bienvenue!</h1>
+          <p>Vous êtes connecté avec succès.</p>
+          <button
+            onClick={() => {
+              localStorage.removeItem('token');
+              setIsAuthenticated(false);
+            }}
+            className="mt-4 w-full bg-red-500 text-white p-2 rounded hover:bg-red-600"
+          >
+            Déconnexion
+          </button>
+        </div>
       </div>
     );
   }
 
-  return user ? <>{children}</> : <Navigate to="/login" replace />;
-};
-
-// Composant pour les routes publiques (rediriger si déjà connecté)
-const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, isLoading } = useAuth();
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-farm-green"></div>
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-100">
+      <div className="bg-white p-8 rounded-lg shadow-md w-96">
+        <h1 className="text-2xl font-bold mb-6 text-center">
+          {isLogin ? 'Connexion' : 'Inscription'}
+        </h1>
+        
+        {error && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+            {error}
+          </div>
+        )}
+        
+        <form onSubmit={handleSubmit}>
+          <div className="mb-4">
+            <label className="block text-gray-700 mb-2">Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+            />
+          </div>
+          
+          <div className="mb-6">
+            <label className="block text-gray-700 mb-2">Mot de passe</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+            />
+          </div>
+          
+          <button
+            type="submit"
+            className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600 transition"
+          >
+            {isLogin ? 'Se connecter' : "S'inscrire"}
+          </button>
+        </form>
+        
+        <button
+          onClick={() => setIsLogin(!isLogin)}
+          className="w-full mt-4 text-blue-500 hover:underline"
+        >
+          {isLogin ? "Pas de compte? S'inscrire" : 'Déjà un compte? Se connecter'}
+        </button>
       </div>
-    );
-  }
-
-  return user ? <Navigate to="/dashboard" replace /> : <>{children}</>;
-};
+    </div>
+  );
+}
 
 function App() {
   return (
-    <AuthProvider>
-      <Router>
-        <div className="min-h-screen bg-gray-50">
-          <Routes>
-            {/* Routes publiques */}
-            <Route 
-              path="/login" 
-              element={
-                <PublicRoute>
-                  <LoginPage />
-                </PublicRoute>
-              } 
-            />
-            <Route 
-              path="/register" 
-              element={
-                <PublicRoute>
-                  <RegisterPage />
-                </PublicRoute>
-              } 
-            />
-
-            {/* Routes protégées */}
-            <Route 
-              path="/dashboard" 
-              element={
-                <ProtectedRoute>
-                  <DashboardPage />
-                </ProtectedRoute>
-              } 
-            />
-
-            {/* Route par défaut */}
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            
-            {/* Route 404 */}
-            <Route 
-              path="*" 
-              element={
-                <div className="min-h-screen flex items-center justify-center">
-                  <div className="text-center">
-                    <h1 className="text-6xl font-bold text-farm-green mb-4">404</h1>
-                    <p className="text-xl text-gray-600 mb-8">Page non trouvée</p>
-                    <a 
-                      href="/dashboard" 
-                      className="inline-flex items-center px-4 py-2 bg-farm-green text-white rounded-lg hover:bg-farm-green/90 transition-colors"
-                    >
-                      Retour au tableau de bord
-                    </a>
-                  </div>
-                </div>
-              } 
-            />
-          </Routes>
-
-          {/* Container pour les notifications toast */}
-          <ToastContainer
-            position="top-right"
-            autoClose={5000}
-            hideProgressBar={false}
-            newestOnTop={false}
-            closeOnClick
-            rtl={false}
-            pauseOnFocusLoss
-            draggable
-            pauseOnHover
-            theme="light"
-          />
-        </div>
-      </Router>
-    </AuthProvider>
+    <Router>
+      <Routes>
+        <Route path="/" element={<LoginPage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Router>
   );
 }
 
