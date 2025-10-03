@@ -33,3 +33,64 @@ export const FarmCard: React.FC<FarmCardProps> = ({
 }) => {
   const farmIcon = getFarmTypeIcon(farm.farmType);
   const farmTypeLabel = getFarmTypeLabel(farm.farmType);
+
+  return (
+    <Card className="hover:shadow-lg transition-shadow">
+      <CardHeader>
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-2">
+            {farmIcon}
+            <CardTitle>{farm.name}</CardTitle>
+          </div>
+          <Badge variant="secondary">{farmTypeLabel}</Badge>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <MapPin className="h-4 w-4" />
+            <span>{farm.location}</span>
+          </div>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Calendar className="h-4 w-4" />
+            <span>Created: {formatDate(farm.createdAt)}</span>
+          </div>
+        </div>
+        {showActions && (
+          <div className="flex gap-2 mt-4">
+            {onViewWeather && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onViewWeather(farm.id)}
+              >
+                <Cloud className="h-4 w-4 mr-2" />
+                Weather
+              </Button>
+            )}
+            {onEdit && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onEdit(farm)}
+              >
+                <Edit className="h-4 w-4 mr-2" />
+                Edit
+              </Button>
+            )}
+            {onDelete && (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => onDelete(farm.id)}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete
+              </Button>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
