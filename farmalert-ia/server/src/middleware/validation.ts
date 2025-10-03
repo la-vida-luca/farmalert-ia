@@ -38,21 +38,21 @@ export const validate = (schema: z.ZodSchema) => {
   return (req: Request, res: Response, next: NextFunction) => {
     try {
       schema.parse(req.body);
-      next();
+      return next();
     } catch (error) {
       if (error instanceof z.ZodError) {
         const errors = error.errors.map(err => ({
           field: err.path.join('.'),
           message: err.message
         }));
-        
+
         logger.warn('Erreur de validation:', { errors, body: req.body });
         return res.status(400).json({
           error: 'Données invalides',
           details: errors
         });
       }
-      
+
       logger.error('Erreur de validation inattendue:', error);
       return res.status(500).json({ error: 'Erreur serveur' });
     }
@@ -64,20 +64,20 @@ export const validateParams = (schema: z.ZodSchema) => {
   return (req: Request, res: Response, next: NextFunction) => {
     try {
       schema.parse(req.params);
-      next();
+      return next();
     } catch (error) {
       if (error instanceof z.ZodError) {
         const errors = error.errors.map(err => ({
           field: err.path.join('.'),
           message: err.message
         }));
-        
+
         return res.status(400).json({
           error: 'Paramètres invalides',
           details: errors
         });
       }
-      
+
       return res.status(500).json({ error: 'Erreur serveur' });
     }
   };

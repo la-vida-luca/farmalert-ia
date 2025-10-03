@@ -21,7 +21,7 @@ import weatherRoutes from './routes/weather';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 8080;
+const PORT = parseInt(process.env.PORT || '8080', 10);
 
 // Configuration CORS
 const corsOptions = {

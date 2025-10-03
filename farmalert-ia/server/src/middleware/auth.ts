@@ -4,6 +4,9 @@ import { AuthRequest, User } from '../types';
 import { db } from '../config/database';
 import logger from '../utils/logger';
 
+// Export the AuthRequest interface so it can be used in route files
+export { AuthRequest } from '../types';
+
 export const authenticateToken = (req: AuthRequest, res: Response, next: NextFunction) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -12,14 +15,14 @@ export const authenticateToken = (req: AuthRequest, res: Response, next: NextFun
     return res.status(401).json({ error: 'Token d\'accès requis' });
   }
 
-  jwt.verify(token, process.env.JWT_SECRET!, (err: any, decoded: any) => {
+  return jwt.verify(token, process.env.JWT_SECRET!, (err: any, decoded: any) => {
     if (err) {
       logger.error('Erreur de vérification du token:', err);
       return res.status(403).json({ error: 'Token invalide' });
     }
 
     // Récupérer les informations utilisateur depuis la base de données
-    db.get(
+    return db.get(
       'SELECT id, email, firstName, lastName, phone, role, createdAt, updatedAt FROM users WHERE id = ?',
       [decoded.userId],
       (err, row: any) => {
@@ -33,7 +36,7 @@ export const authenticateToken = (req: AuthRequest, res: Response, next: NextFun
         }
 
         req.user = row as User;
-        next();
+        return next();
       }
     );
   });
@@ -48,7 +51,7 @@ export const requireAdmin = (req: AuthRequest, res: Response, next: NextFunction
     return res.status(403).json({ error: 'Accès administrateur requis' });
   }
 
-  next();
+  return next();
 };
 
 export const requireFarmer = (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -60,5 +63,5 @@ export const requireFarmer = (req: AuthRequest, res: Response, next: NextFunctio
     return res.status(403).json({ error: 'Accès agriculteur requis' });
   }
 
-  next();
+  return next();
 };

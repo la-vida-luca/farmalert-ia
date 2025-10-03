@@ -1,5 +1,6 @@
 import { Router, Response } from 'express';
-import { AuthRequest, authenticateToken } from '../middleware/auth';
+import { authenticateToken } from '../middleware/auth';
+import { AuthRequest } from '../types';
 import { WeatherService } from '../services/weatherService';
 import logger from '../utils/logger';
 
@@ -26,10 +27,10 @@ router.get('/current', authenticateToken, async (req: AuthRequest, res: Response
     }
 
     const weatherData = await WeatherService.getCurrentWeather(latitude, longitude);
-    res.json({ weather: weatherData });
+    return res.json({ weather: weatherData });
   } catch (error) {
     logger.error('Erreur lors de la récupération des données météo:', error);
-    res.status(500).json({ error: 'Impossible de récupérer les données météo' });
+    return res.status(500).json({ error: 'Impossible de récupérer les données météo' });
   }
 });
 
@@ -54,10 +55,10 @@ router.get('/forecast', authenticateToken, async (req: AuthRequest, res: Respons
     }
 
     const forecast = await WeatherService.getWeatherForecast(latitude, longitude);
-    res.json({ forecast });
+    return res.json({ forecast });
   } catch (error) {
     logger.error('Erreur lors de la récupération des prévisions météo:', error);
-    res.status(500).json({ error: 'Impossible de récupérer les prévisions météo' });
+    return res.status(500).json({ error: 'Impossible de récupérer les prévisions météo' });
   }
 });
 
@@ -72,10 +73,10 @@ router.post('/update-all', authenticateToken, async (req: AuthRequest, res: Resp
     await WeatherService.updateWeatherForAllFarms();
     
     logger.info('Données météo mises à jour pour toutes les fermes');
-    res.json({ message: 'Données météo mises à jour avec succès' });
+    return res.json({ message: 'Données météo mises à jour avec succès' });
   } catch (error) {
     logger.error('Erreur lors de la mise à jour des données météo:', error);
-    res.status(500).json({ error: 'Erreur lors de la mise à jour des données météo' });
+    return res.status(500).json({ error: 'Erreur lors de la mise à jour des données météo' });
   }
 });
 
@@ -115,7 +116,7 @@ router.get('/history', authenticateToken, async (req: AuthRequest, res: Response
       LIMIT 1
     `;
 
-    db.get(sql, [latitude, longitude], async (err: any, farm: any) => {
+  return db.get(sql, [latitude, longitude], async (err: any, farm: any) => {
       if (err) {
         logger.error('Erreur lors de la recherche de ferme:', err);
         return res.status(500).json({ error: 'Erreur serveur' });
@@ -130,15 +131,15 @@ router.get('/history', authenticateToken, async (req: AuthRequest, res: Response
 
       try {
         const history = await WeatherService.getWeatherHistory(farm.id, daysCount * 24);
-        res.json({ history });
+        return res.json({ history });
       } catch (error) {
         logger.error('Erreur lors de la récupération de l\'historique:', error);
-        res.status(500).json({ error: 'Erreur lors de la récupération de l\'historique' });
+        return res.status(500).json({ error: 'Erreur lors de la récupération de l\'historique' });
       }
     });
   } catch (error) {
     logger.error('Erreur lors de la récupération de l\'historique météo:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
+    return res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
@@ -196,7 +197,7 @@ router.get('/optimal-conditions/:cropType', authenticateToken, (req: AuthRequest
     return res.status(400).json({ error: 'Type de culture non supporté' });
   }
 
-  res.json({ 
+  return res.json({ 
     cropType,
     optimalConditions: conditions,
     recommendations: {

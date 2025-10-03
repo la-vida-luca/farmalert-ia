@@ -28,28 +28,28 @@ async function createDemoData() {
     const farmerPassword = await bcrypt.hash('farmer123', 12);
 
     // Utilisateur admin
-    const adminId = await new Promise((resolve, reject) => {
+    const adminId = await new Promise<number>((resolve, reject) => {
       db.run(
         'INSERT INTO users (email, password, firstName, lastName, phone, role) VALUES (?, ?, ?, ?, ?, ?)',
         ['admin@farmalert.fr', adminPassword, 'Admin', 'FarmAlert', '+33 1 23 45 67 89', 'admin'],
-        function(err: any) {
+        function(this: { lastID: number }, err: any) {
           if (err) reject(err);
           else resolve(this.lastID);
         }
       );
-    }) as number;
+    });
 
     // Utilisateur fermier
-    const farmerId = await new Promise((resolve, reject) => {
+    const farmerId = await new Promise<number>((resolve, reject) => {
       db.run(
         'INSERT INTO users (email, password, firstName, lastName, phone, role) VALUES (?, ?, ?, ?, ?, ?)',
         ['fermier@normandie.fr', farmerPassword, 'Jean', 'Dupont', '+33 2 31 45 67 89', 'farmer'],
-        function(err: any) {
+        function(this: { lastID: number }, err: any) {
           if (err) reject(err);
           else resolve(this.lastID);
         }
       );
-    }) as number;
+    });
 
     logger.info('Utilisateurs de démonstration créés');
 
@@ -99,19 +99,19 @@ async function createDemoData() {
     const farmIds: number[] = [];
 
     for (const farm of farms) {
-      const farmId = await new Promise((resolve, reject) => {
+      const farmId = await new Promise<number>((resolve, reject) => {
         db.run(
           'INSERT INTO farms (userId, name, description, latitude, longitude, address, city, postalCode, region, farmType, size) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
           [
             farm.userId, farm.name, farm.description, farm.latitude, farm.longitude,
             farm.address, farm.city, farm.postalCode, farm.region, farm.farmType, farm.size
           ],
-          function(err: any) {
+          function(this: { lastID: number }, err: any) {
             if (err) reject(err);
             else resolve(this.lastID);
           }
         );
-      }) as number;
+      });
 
       farmIds.push(farmId);
       logger.info(`Ferme créée: ${farm.name} (ID: ${farmId})`);
@@ -185,14 +185,14 @@ async function createDemoData() {
     ];
 
     for (const alert of demoAlerts) {
-      await new Promise((resolve, reject) => {
+      await new Promise<number>((resolve, reject) => {
         db.run(
           'INSERT INTO alerts (farmId, userId, type, severity, title, description, recommendation, isActive, triggeredAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
           [
             alert.farmId, alert.userId, alert.type, alert.severity, alert.title,
             alert.description, alert.recommendation, 1, alert.triggeredAt
           ],
-          function(err: any) {
+          function(this: { lastID: number }, err: any) {
             if (err) reject(err);
             else resolve(this.lastID);
           }
@@ -220,17 +220,17 @@ async function createDemoData() {
         const windSpeed = 5 + Math.random() * 10;
         const precipitation = Math.random() > 0.8 ? Math.random() * 5 : 0; // 20% de chance de pluie
         
-        await new Promise((resolve, reject) => {
+        await new Promise<number>((resolve, reject) => {
           db.run(
             'INSERT INTO weather_data (farmId, temperature, humidity, pressure, windSpeed, windDirection, precipitation, cloudiness, visibility, uvIndex, timestamp, weatherCondition, weatherDescription) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             [
               farmId, temperature, humidity, 1013 + (Math.random() - 0.5) * 20,
               windSpeed, Math.random() * 360, precipitation, Math.random() * 100,
               10 + Math.random() * 5, Math.random() * 8, timestamp,
-              precipitation > 0 ? 'Rain' : 'Clear', 
+              precipitation > 0 ? 'Rain' : 'Clear',
               precipitation > 0 ? 'Pluie légère' : 'Ciel dégagé'
             ],
-            function(err: any) {
+            function(this: { lastID: number }, err: any) {
               if (err) reject(err);
               else resolve(this.lastID);
             }

@@ -1,5 +1,6 @@
 import { Router, Response } from 'express';
-import { AuthRequest, authenticateToken } from '../middleware/auth';
+import { authenticateToken } from '../middleware/auth';
+import { AuthRequest } from '../types';
 import { validateParams, idParamSchema } from '../middleware/validation';
 import { AlertsEngine } from '../services/alertsEngine';
 import logger from '../utils/logger';
@@ -13,10 +14,10 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
     const limit = parseInt(req.query.limit as string) || 50;
 
     const alerts = await AlertsEngine.getUserAlerts(userId, limit);
-    res.json({ alerts });
+    return res.json({ alerts });
   } catch (error) {
     logger.error('Erreur lors de la récupération des alertes:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
+    return res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
@@ -34,17 +35,17 @@ router.get('/active', authenticateToken, async (req: AuthRequest, res: Response)
       ORDER BY a.triggeredAt DESC
     `;
 
-    db.all(sql, [userId], (err: any, alerts: any[]) => {
+    return db.all(sql, [userId], (err: any, alerts: any[]) => {
       if (err) {
         logger.error('Erreur lors de la récupération des alertes actives:', err);
         return res.status(500).json({ error: 'Erreur serveur' });
       }
 
-      res.json({ alerts });
+      return res.json({ alerts });
     });
   } catch (error) {
     logger.error('Erreur lors de la récupération des alertes actives:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
+    return res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
@@ -56,7 +57,7 @@ router.get('/farm/:farmId', authenticateToken, validateParams(require('../middle
 
     // Vérifier que la ferme appartient à l'utilisateur
     const db = require('../config/database').db;
-    db.get('SELECT id FROM farms WHERE id = ? AND userId = ?', [farmId, userId], (err: any, farm: any) => {
+  return db.get('SELECT id FROM farms WHERE id = ? AND userId = ?', [farmId, userId], (err: any, farm: any) => {
       if (err) {
         logger.error('Erreur lors de la vérification de la ferme:', err);
         return res.status(500).json({ error: 'Erreur serveur' });
@@ -74,18 +75,18 @@ router.get('/farm/:farmId', authenticateToken, validateParams(require('../middle
         ORDER BY a.triggeredAt DESC
       `;
 
-      db.all(sql, [farmId, userId], (err: any, alerts: any[]) => {
+  return db.all(sql, [farmId, userId], (err: any, alerts: any[]) => {
         if (err) {
           logger.error('Erreur lors de la récupération des alertes de la ferme:', err);
           return res.status(500).json({ error: 'Erreur serveur' });
         }
 
-        res.json({ alerts });
+        return res.json({ alerts });
       });
     });
   } catch (error) {
     logger.error('Erreur lors de la récupération des alertes de la ferme:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
+    return res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
@@ -102,7 +103,7 @@ router.get('/:id', authenticateToken, validateParams(idParamSchema), (req: AuthR
     WHERE a.id = ? AND a.userId = ?
   `;
 
-  db.get(sql, [alertId, userId], (err: any, alert: any) => {
+  return db.get(sql, [alertId, userId], (err: any, alert: any) => {
     if (err) {
       logger.error('Erreur lors de la récupération de l\'alerte:', err);
       return res.status(500).json({ error: 'Erreur serveur' });
@@ -112,7 +113,7 @@ router.get('/:id', authenticateToken, validateParams(idParamSchema), (req: AuthR
       return res.status(404).json({ error: 'Alerte non trouvée' });
     }
 
-    res.json({ alert });
+    return res.json({ alert });
   });
 });
 
@@ -120,7 +121,7 @@ router.get('/:id', authenticateToken, validateParams(idParamSchema), (req: AuthR
 router.put('/:id/acknowledge', authenticateToken, validateParams(idParamSchema), async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.id;
-    const alertId = req.params.id;
+    const alertId = parseInt(req.params.id, 10);
 
     const success = await AlertsEngine.acknowledgeAlert(alertId, userId);
 
@@ -129,10 +130,10 @@ router.put('/:id/acknowledge', authenticateToken, validateParams(idParamSchema),
     }
 
     logger.info(`Alerte ${alertId} marquée comme lue par l'utilisateur ${userId}`);
-    res.json({ message: 'Alerte marquée comme lue' });
+    return res.json({ message: 'Alerte marquée comme lue' });
   } catch (error) {
     logger.error('Erreur lors de la reconnaissance de l\'alerte:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
+    return res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
@@ -159,13 +160,13 @@ router.get('/stats/summary', authenticateToken, (req: AuthRequest, res: Response
     WHERE userId = ?
   `;
 
-  db.get(sql, [userId], (err: any, stats: any) => {
+  return db.get(sql, [userId], (err: any, stats: any) => {
     if (err) {
       logger.error('Erreur lors de la récupération des statistiques:', err);
       return res.status(500).json({ error: 'Erreur serveur' });
     }
 
-    res.json({ stats });
+    return res.json({ stats });
   });
 });
 
@@ -188,13 +189,13 @@ router.get('/type/:type', authenticateToken, (req: AuthRequest, res: Response) =
     ORDER BY a.triggeredAt DESC
   `;
 
-  db.all(sql, [userId, alertType], (err: any, alerts: any[]) => {
+  return db.all(sql, [userId, alertType], (err: any, alerts: any[]) => {
     if (err) {
       logger.error('Erreur lors de la récupération des alertes par type:', err);
       return res.status(500).json({ error: 'Erreur serveur' });
     }
 
-    res.json({ alerts });
+    return res.json({ alerts });
   });
 });
 
@@ -217,13 +218,13 @@ router.get('/severity/:severity', authenticateToken, (req: AuthRequest, res: Res
     ORDER BY a.triggeredAt DESC
   `;
 
-  db.all(sql, [userId, severity], (err: any, alerts: any[]) => {
+  return db.all(sql, [userId, severity], (err: any, alerts: any[]) => {
     if (err) {
       logger.error('Erreur lors de la récupération des alertes par gravité:', err);
       return res.status(500).json({ error: 'Erreur serveur' });
     }
 
-    res.json({ alerts });
+    return res.json({ alerts });
   });
 });
 

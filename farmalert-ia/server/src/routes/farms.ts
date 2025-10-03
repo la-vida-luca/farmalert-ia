@@ -1,5 +1,6 @@
 import { Router, Response } from 'express';
-import { AuthRequest, authenticateToken } from '../middleware/auth';
+import { authenticateToken } from '../middleware/auth';
+import { AuthRequest } from '../types';
 import { validate, validateParams, createFarmSchema, updateFarmSchema, idParamSchema } from '../middleware/validation';
 import { WeatherService } from '../services/weatherService';
 import { AlertsEngine } from '../services/alertsEngine';
@@ -23,7 +24,7 @@ router.get('/', authenticateToken, (req: AuthRequest, res: Response) => {
         return res.status(500).json({ error: 'Erreur serveur' });
       }
 
-      res.json({ farms });
+      return res.json({ farms });
     }
   );
 });
@@ -49,7 +50,7 @@ router.get('/:id', authenticateToken, validateParams(idParamSchema), (req: AuthR
         return res.status(404).json({ error: 'Ferme non trouvée' });
       }
 
-      res.json({ farm });
+      return res.json({ farm });
     }
   );
 });
@@ -66,18 +67,18 @@ router.post('/', authenticateToken, validate(createFarmSchema), (req: AuthReques
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
 
-  require('sqlite3').Database.prototype.run.call(
-    require('../config/database').db,
+  const db = require('../config/database').db;
+  return db.run(
     sql,
     [userId, name, description || null, latitude, longitude, address, city, postalCode, region, farmType, size],
-    function(err: any) {
+    function(this: { lastID: number }, err: any) {
       if (err) {
         logger.error('Erreur lors de la création de la ferme:', err);
         return res.status(500).json({ error: 'Erreur serveur' });
       }
 
       logger.info(`Nouvelle ferme créée: ${name} pour l'utilisateur ${userId}`);
-      res.status(201).json({
+      return res.status(201).json({
         message: 'Ferme créée avec succès',
         farm: {
           id: this.lastID,
@@ -116,11 +117,11 @@ router.put('/:id', authenticateToken, validateParams(idParamSchema), validate(up
 
   const sql = `UPDATE farms SET ${setClause}, updatedAt = CURRENT_TIMESTAMP WHERE id = ? AND userId = ?`;
 
-  require('sqlite3').Database.prototype.run.call(
-    require('../config/database').db,
+  const db = require('../config/database').db;
+  db.run(
     sql,
     values,
-    function(err: any) {
+    function(this: { changes: number }, err: any) {
       if (err) {
         logger.error('Erreur lors de la mise à jour de la ferme:', err);
         return res.status(500).json({ error: 'Erreur serveur' });
@@ -131,23 +132,26 @@ router.put('/:id', authenticateToken, validateParams(idParamSchema), validate(up
       }
 
       logger.info(`Ferme ${farmId} mise à jour par l'utilisateur ${userId}`);
-      res.json({ message: 'Ferme mise à jour avec succès' });
+      return res.json({ message: 'Ferme mise à jour avec succès' });
     }
   );
+
+  // Return undefined to satisfy TypeScript
+  return undefined;
 });
 
 // Supprimer une ferme
 router.delete('/:id', authenticateToken, validateParams(idParamSchema), (req: AuthRequest, res: Response) => {
   const userId = req.user!.id;
-  const farmId = req.params.id;
+  const farmId = parseInt(req.params.id, 10);
 
   const sql = 'DELETE FROM farms WHERE id = ? AND userId = ?';
 
-  require('sqlite3').Database.prototype.run.call(
-    require('../config/database').db,
+  const db = require('../config/database').db;
+  return db.run(
     sql,
     [farmId, userId],
-    function(err: any) {
+    function(this: { lastID: number; changes: number }, err: any) {
       if (err) {
         logger.error('Erreur lors de la suppression de la ferme:', err);
         return res.status(500).json({ error: 'Erreur serveur' });
@@ -158,7 +162,7 @@ router.delete('/:id', authenticateToken, validateParams(idParamSchema), (req: Au
       }
 
       logger.info(`Ferme ${farmId} supprimée par l'utilisateur ${userId}`);
-      res.json({ message: 'Ferme supprimée avec succès' });
+      return res.json({ message: 'Ferme supprimée avec succès' });
     }
   );
 });
@@ -167,11 +171,11 @@ router.delete('/:id', authenticateToken, validateParams(idParamSchema), (req: Au
 router.get('/:id/weather', authenticateToken, validateParams(idParamSchema), async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.id;
-    const farmId = req.params.id;
+    const farmId = parseInt(req.params.id, 10);
 
     // Vérifier que la ferme appartient à l'utilisateur
     const db = require('../config/database').db;
-    db.get('SELECT * FROM farms WHERE id = ? AND userId = ?', [farmId, userId], async (err: any, farm: any) => {
+  return db.get('SELECT * FROM farms WHERE id = ? AND userId = ?', [farmId, userId], async (err: any, farm: any) => {
       if (err) {
         logger.error('Erreur lors de la vérification de la ferme:', err);
         return res.status(500).json({ error: 'Erreur serveur' });
@@ -191,18 +195,18 @@ router.get('/:id/weather', authenticateToken, validateParams(idParamSchema), asy
         // Récupérer l'historique météo
         const weatherHistory = await WeatherService.getWeatherHistory(farmId, 24);
 
-        res.json({
+        return res.json({
           current: currentWeather,
           history: weatherHistory
         });
       } catch (error) {
         logger.error('Erreur lors de la récupération des données météo:', error);
-        res.status(500).json({ error: 'Impossible de récupérer les données météo' });
+        return res.status(500).json({ error: 'Impossible de récupérer les données météo' });
       }
     });
   } catch (error) {
     logger.error('Erreur lors de la récupération des données météo:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
+    return res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
@@ -214,7 +218,7 @@ router.get('/:id/forecast', authenticateToken, validateParams(idParamSchema), as
 
     // Vérifier que la ferme appartient à l'utilisateur
     const db = require('../config/database').db;
-    db.get('SELECT * FROM farms WHERE id = ? AND userId = ?', [farmId, userId], async (err: any, farm: any) => {
+  return db.get('SELECT * FROM farms WHERE id = ? AND userId = ?', [farmId, userId], async (err: any, farm: any) => {
       if (err) {
         logger.error('Erreur lors de la vérification de la ferme:', err);
         return res.status(500).json({ error: 'Erreur serveur' });
@@ -226,15 +230,15 @@ router.get('/:id/forecast', authenticateToken, validateParams(idParamSchema), as
 
       try {
         const forecast = await WeatherService.getWeatherForecast(farm.latitude, farm.longitude);
-        res.json({ forecast });
+        return res.json({ forecast });
       } catch (error) {
         logger.error('Erreur lors de la récupération des prévisions:', error);
-        res.status(500).json({ error: 'Impossible de récupérer les prévisions météo' });
+        return res.status(500).json({ error: 'Impossible de récupérer les prévisions météo' });
       }
     });
   } catch (error) {
     logger.error('Erreur lors de la récupération des prévisions:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
+    return res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
@@ -242,11 +246,11 @@ router.get('/:id/forecast', authenticateToken, validateParams(idParamSchema), as
 router.post('/:id/check-alerts', authenticateToken, validateParams(idParamSchema), async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.id;
-    const farmId = req.params.id;
+    const farmId = parseInt(req.params.id, 10);
 
     // Vérifier que la ferme appartient à l'utilisateur
     const db = require('../config/database').db;
-    db.get('SELECT * FROM farms WHERE id = ? AND userId = ?', [farmId, userId], async (err: any, farm: any) => {
+  return db.get('SELECT * FROM farms WHERE id = ? AND userId = ?', [farmId, userId], async (err: any, farm: any) => {
       if (err) {
         logger.error('Erreur lors de la vérification de la ferme:', err);
         return res.status(500).json({ error: 'Erreur serveur' });
@@ -264,19 +268,19 @@ router.post('/:id/check-alerts', authenticateToken, validateParams(idParamSchema
         // Vérifier les alertes
         const newAlerts = await AlertsEngine.checkAlerts(farmId, userId);
 
-        res.json({
+        return res.json({
           message: 'Vérification des alertes terminée',
           newAlerts,
           weatherData: currentWeather
         });
       } catch (error) {
         logger.error('Erreur lors de la vérification des alertes:', error);
-        res.status(500).json({ error: 'Impossible de vérifier les alertes' });
+        return res.status(500).json({ error: 'Impossible de vérifier les alertes' });
       }
     });
   } catch (error) {
     logger.error('Erreur lors de la vérification des alertes:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
+    return res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 

@@ -2,7 +2,8 @@ import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { db } from '../config/database';
-import { authenticateToken, AuthRequest } from '../middleware/auth';
+import { authenticateToken } from '../middleware/auth';
+import { AuthRequest } from '../types';
 import { validate, registerSchema, loginSchema } from '../middleware/validation';
 import logger from '../utils/logger';
 
@@ -14,7 +15,7 @@ router.post('/register', validate(registerSchema), async (req: Request, res: Res
     const { email, password, firstName, lastName, phone } = req.body;
 
     // Vérifier si l'utilisateur existe déjà
-    db.get('SELECT id FROM users WHERE email = ?', [email], async (err, row: any) => {
+  return db.get('SELECT id FROM users WHERE email = ?', [email], async (err, row: any) => {
       if (err) {
         logger.error('Erreur lors de la vérification de l\'utilisateur:', err);
         return res.status(500).json({ error: 'Erreur serveur' });
@@ -29,10 +30,10 @@ router.post('/register', validate(registerSchema), async (req: Request, res: Res
         const hashedPassword = await bcrypt.hash(password, 12);
 
         // Créer l'utilisateur
-        db.run(
+  return db.run(
           'INSERT INTO users (email, password, firstName, lastName, phone) VALUES (?, ?, ?, ?, ?)',
           [email, hashedPassword, firstName, lastName, phone || null],
-          function(err) {
+          function(this: { lastID: number }, err) {
             if (err) {
               logger.error('Erreur lors de la création de l\'utilisateur:', err);
               return res.status(500).json({ error: 'Erreur serveur' });
@@ -40,13 +41,12 @@ router.post('/register', validate(registerSchema), async (req: Request, res: Res
 
             // Générer le token JWT
             const token = jwt.sign(
-              { userId: this.lastID, email },
-              process.env.JWT_SECRET!,
-              { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+              { userId: (row as any).id, email },
+              process.env.JWT_SECRET!
             );
 
             logger.info(`Nouvel utilisateur créé: ${email}`);
-            res.status(201).json({
+            return res.status(201).json({
               message: 'Utilisateur créé avec succès',
               token,
               user: {
@@ -62,12 +62,12 @@ router.post('/register', validate(registerSchema), async (req: Request, res: Res
         );
       } catch (error) {
         logger.error('Erreur lors du hashage du mot de passe:', error);
-        res.status(500).json({ error: 'Erreur serveur' });
+        return res.status(500).json({ error: 'Erreur serveur' });
       }
     });
   } catch (error) {
     logger.error('Erreur lors de l\'inscription:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
+    return res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
@@ -76,7 +76,7 @@ router.post('/login', validate(loginSchema), async (req: Request, res: Response)
   try {
     const { email, password } = req.body;
 
-    db.get(
+  return db.get(
       'SELECT id, email, password, firstName, lastName, phone, role FROM users WHERE email = ?',
       [email],
       async (err, user: any) => {
@@ -100,12 +100,11 @@ router.post('/login', validate(loginSchema), async (req: Request, res: Response)
           // Générer le token JWT
           const token = jwt.sign(
             { userId: user.id, email: user.email },
-            process.env.JWT_SECRET!,
-            { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+            process.env.JWT_SECRET!
           );
 
           logger.info(`Connexion réussie: ${email}`);
-          res.json({
+          return res.json({
             message: 'Connexion réussie',
             token,
             user: {
@@ -119,19 +118,19 @@ router.post('/login', validate(loginSchema), async (req: Request, res: Response)
           });
         } catch (error) {
           logger.error('Erreur lors de la vérification du mot de passe:', error);
-          res.status(500).json({ error: 'Erreur serveur' });
+          return res.status(500).json({ error: 'Erreur serveur' });
         }
       }
     );
   } catch (error) {
     logger.error('Erreur lors de la connexion:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
+    return res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
 // Obtenir le profil utilisateur
 router.get('/profile', authenticateToken, (req: AuthRequest, res: Response) => {
-  res.json({
+  return res.json({
     user: {
       id: req.user!.id,
       email: req.user!.email,
@@ -150,7 +149,7 @@ router.put('/profile', authenticateToken, async (req: AuthRequest, res: Response
     const { firstName, lastName, phone } = req.body;
     const userId = req.user!.id;
 
-    db.run(
+  return db.run(
       'UPDATE users SET firstName = ?, lastName = ?, phone = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
       [firstName, lastName, phone || null, userId],
       function(err) {
@@ -164,12 +163,12 @@ router.put('/profile', authenticateToken, async (req: AuthRequest, res: Response
         }
 
         logger.info(`Profil mis à jour pour l'utilisateur ${userId}`);
-        res.json({ message: 'Profil mis à jour avec succès' });
+        return res.json({ message: 'Profil mis à jour avec succès' });
       }
     );
   } catch (error) {
     logger.error('Erreur lors de la mise à jour du profil:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
+    return res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
@@ -188,7 +187,7 @@ router.put('/password', authenticateToken, async (req: AuthRequest, res: Respons
     }
 
     // Récupérer le mot de passe actuel
-    db.get('SELECT password FROM users WHERE id = ?', [userId], async (err, user: any) => {
+  return db.get('SELECT password FROM users WHERE id = ?', [userId], async (err, user: any) => {
       if (err) {
         logger.error('Erreur lors de la récupération du mot de passe:', err);
         return res.status(500).json({ error: 'Erreur serveur' });
@@ -210,7 +209,7 @@ router.put('/password', authenticateToken, async (req: AuthRequest, res: Respons
         const hashedNewPassword = await bcrypt.hash(newPassword, 12);
 
         // Mettre à jour le mot de passe
-        db.run(
+  return db.run(
           'UPDATE users SET password = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
           [hashedNewPassword, userId],
           function(err) {
@@ -220,17 +219,17 @@ router.put('/password', authenticateToken, async (req: AuthRequest, res: Respons
             }
 
             logger.info(`Mot de passe changé pour l'utilisateur ${userId}`);
-            res.json({ message: 'Mot de passe changé avec succès' });
+            return res.json({ message: 'Mot de passe changé avec succès' });
           }
         );
       } catch (error) {
         logger.error('Erreur lors du changement de mot de passe:', error);
-        res.status(500).json({ error: 'Erreur serveur' });
+        return res.status(500).json({ error: 'Erreur serveur' });
       }
     });
   } catch (error) {
     logger.error('Erreur lors du changement de mot de passe:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
+    return res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
