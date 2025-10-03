@@ -9,6 +9,12 @@ app.use(cors({
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
     
+    // Check if CORS_ORIGIN environment variable is set
+    const allowedOrigin = process.env.CORS_ORIGIN;
+    if (allowedOrigin && origin === allowedOrigin) {
+      return callback(null, true);
+    }
+    
     // Allow all Netlify URLs and localhost
     if (origin.endsWith('.netlify.app') || 
         origin === 'http://localhost:3000' ||
@@ -21,6 +27,7 @@ app.use(cors({
   },
   credentials: true
 }));
+
 app.use(express.json());
 
 // In-memory storage for demo purposes
