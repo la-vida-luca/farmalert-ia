@@ -328,4 +328,137 @@ function AlertsPage({ api }: { api: ReturnType<typeof useApi> }) {
                 <div style={{ fontWeight: 600 }}>{a.type} • {a.severity.toUpperCase()}</div>
                 <div style={{ fontSize: 12, color: '#6b7280' }}>{a.message}</div>
               </div>
-             
+              <div>
+                <button onClick={() => remove(a._id)} style={{ color: '#b91c1c' }}>Supprimer</button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  )
+}
+
+function SettingsPage() {
+  return (
+    <div style={{ padding: 16 }}>
+      <h3>Paramètres</h3>
+      <p>Configuration des préférences et notifications.</p>
+    </div>
+  )
+}
+
+function LoginPage({ auth }: { auth: ReturnType<typeof useAuth> }) {
+  const [mode, setMode] = useState<'login' | 'register'>('login')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const navigate = useNavigate()
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    
+    if (!email || !password) {
+      setError('Email et mot de passe requis')
+      return
+    }
+
+    const result = mode === 'login' 
+      ? await auth.login(email, password)
+      : await auth.register(email, password)
+
+    if (result.ok) {
+      if (mode === 'register') {
+        setMode('login')
+        setPassword('')
+        setError(null)
+      } else {
+        navigate('/dashboard')
+      }
+    } else {
+      setError(result.error || 'Une erreur est survenue')
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', backgroundColor: '#f9fafb' }}>
+      <div style={{ maxWidth: 400, width: '100%', padding: 24, backgroundColor: 'white', borderRadius: 8, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+        <div style={{ textAlign: 'center', marginBottom: 24 }}>
+          <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>🌾 FarmAlert</h1>
+          <p style={{ color: '#6b7280' }}>Système d'alerte météo agricole</p>
+        </div>
+
+        <form onSubmit={submit} style={{ display: 'grid', gap: 16 }}>
+          <div style={{ display: 'flex', borderRadius: 4, overflow: 'hidden', border: '1px solid #d1d5db' }}>
+            <button 
+              type="button" 
+              onClick={() => setMode('login')}
+              style={{ flex: 1, padding: 8, backgroundColor: mode === 'login' ? '#3b82f6' : '#f3f4f6', color: mode === 'login' ? 'white' : '#374151', border: 'none' }}
+            >
+              Connexion
+            </button>
+            <button 
+              type="button" 
+              onClick={() => setMode('register')}
+              style={{ flex: 1, padding: 8, backgroundColor: mode === 'register' ? '#3b82f6' : '#f3f4f6', color: mode === 'register' ? 'white' : '#374151', border: 'none' }}
+            >
+              Inscription
+            </button>
+          </div>
+
+          <input 
+            type="email" 
+            placeholder="Email" 
+            value={email} 
+            onChange={e => setEmail(e.target.value)}
+            style={{ padding: 12, border: '1px solid #d1d5db', borderRadius: 4 }}
+          />
+          <input 
+            type="password" 
+            placeholder="Mot de passe" 
+            value={password} 
+            onChange={e => setPassword(e.target.value)}
+            style={{ padding: 12, border: '1px solid #d1d5db', borderRadius: 4 }}
+          />
+          
+          <button 
+            type="submit" 
+            disabled={auth.loading}
+            style={{ padding: 12, backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: 4, fontWeight: 600 }}
+          >
+            {auth.loading ? 'Chargement...' : mode === 'login' ? 'Se connecter' : 'S\'inscrire'}
+          </button>
+
+          {error && <div style={{ color: '#b91c1c', textAlign: 'center' }}>{error}</div>}
+        </form>
+      </div>
+    </div>
+  )
+}
+
+export default function App() {
+  const auth = useAuth()
+  const api = useApi(auth.token)
+
+  if (!auth.token) {
+    return <LoginPage auth={auth} />
+  }
+
+  return (
+    <Router>
+      <div style={{ minHeight: '100vh', backgroundColor: '#f9fafb' }}>
+        <Topbar onLogout={auth.logout} />
+        <main>
+          <Routes>
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/dashboard" element={<DashboardHome api={api} />} />
+            <Route path="/farms" element={<FarmsPage api={api} />} />
+            <Route path="/alerts" element={<AlertsPage api={api} />} />
+            <Route path="/settings" element={<SettingsPage />} />
+          </Routes>
+        </main>
+      </div>
+    </Router>
+  )
+}
