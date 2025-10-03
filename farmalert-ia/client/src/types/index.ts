@@ -120,7 +120,7 @@ export interface ApiResponse<T> {
 }
 
 export interface PaginatedResponse<T> {
-  [key: string]: T[];
+  data: T[];
   pagination: Pagination;
 }
 
