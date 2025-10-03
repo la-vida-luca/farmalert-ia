@@ -21,7 +21,6 @@ app.use(cors({
   },
   credentials: true
 }));
-
 app.use(express.json());
 
 // In-memory storage for demo purposes
@@ -34,14 +33,14 @@ app.post('/api/auth/register', (req, res) => {
   
   // Check if user already exists
   const existingUser = users.find(u => u.email === email);
+  
   if (existingUser) {
     return res.status(400).json({ 
       success: false, 
-      message: 'User already exists'
+      message: 'User already exists' 
     });
   }
   
-  // Create new user
   const newUser = {
     id: users.length + 1,
     email,
@@ -62,29 +61,27 @@ app.post('/api/auth/register', (req, res) => {
 app.post('/api/auth/login', (req, res) => {
   const { email, password } = req.body;
   
-  // Find user
   const user = users.find(u => u.email === email && u.password === password);
   
   if (!user) {
     return res.status(401).json({ 
       success: false, 
-      message: 'Invalid credentials'
+      message: 'Invalid credentials' 
     });
   }
   
   res.json({ 
     success: true, 
     message: 'Login successful',
-    token: 'sample-jwt-token-' + user.id,
     user: { id: user.id, email: user.email, name: user.name }
   });
 });
 
-// Farm routes (CRUD)
+// Farm routes
 app.get('/api/farms', (req, res) => {
   res.json({ 
     success: true, 
-    farms: farms 
+    farms 
   });
 });
 
@@ -97,29 +94,13 @@ app.post('/api/farms', (req, res) => {
     location,
     size,
     crops,
-    createdAt: new Date()
+    createdAt: new Date(),
+    updatedAt: new Date()
   };
   
   farms.push(newFarm);
   
   res.status(201).json({ 
-    success: true, 
-    message: 'Farm created successfully',
-    farm: newFarm
-  });
-});
-
-app.get('/api/farms/:id', (req, res) => {
-  const farm = farms.find(f => f.id === parseInt(req.params.id));
-  
-  if (!farm) {
-    return res.status(404).json({ 
-      success: false, 
-      message: 'Farm not found'
-    });
-  }
-  
-  res.json({ 
     success: true, 
     farm: farm 
   });
@@ -169,6 +150,9 @@ app.delete('/api/farms/:id', (req, res) => {
     message: 'Farm deleted successfully'
   });
 });
+
+// Root route
+app.get('/', (req, res) => res.json({message: "API OK", status: "running", version: "1.0.0"}));
 
 // Start server
 app.listen(PORT, () => {
