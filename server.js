@@ -3,30 +3,24 @@ const cors = require('cors');
 const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 const fetch = require('node-fetch');
-
 const app = express();
 app.use(cors());
 app.use(express.json());
-
 const PORT = process.env.PORT || 3000;
 const OWM_API_KEY = process.env.OWM_API_KEY || process.env.OPENWEATHER_API_KEY;
-
 // PostgreSQL connection pool
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
-
 // ---------------- Weather Service Helpers ----------------
 const OWM_BASE = 'https://api.openweathermap.org/data/2.5';
-
 function buildQuery(params) {
   return Object.entries(params)
     .filter(([, v]) => v !== undefined && v !== null && v !== '')
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
     .join('&');
 }
-
 async function owmGet(path, params) {
   if (!OWM_API_KEY) throw new Error('OWM_API_KEY not configured');
   const qs = buildQuery({ ...params, appid: OWM_API_KEY });
@@ -38,7 +32,6 @@ async function owmGet(path, params) {
   }
   return resp.json();
 }
-
 function normalizeCurrentWeather(d) {
   return {
     coord: d.coord,
@@ -61,7 +54,6 @@ function normalizeCurrentWeather(d) {
     timezone: d.timezone
   };
 }
-
 function normalizeForecast(d) {
   return {
     city: d.city,
@@ -80,7 +72,6 @@ function normalizeForecast(d) {
     }))
   };
 }
-
 // ---------------- Weather Endpoints ----------------
 // Current weather by coordinates or city
 app.get('/api/weather/current', async (req, res) => {
@@ -100,7 +91,6 @@ app.get('/api/weather/current', async (req, res) => {
     res.status(500).json({ success: false, message: 'Weather service error', error: err.message });
   }
 });
-
 // 5 day / 3 hour forecast by coordinates or city
 app.get('/api/weather/forecast', async (req, res) => {
   try {
@@ -119,7 +109,6 @@ app.get('/api/weather/forecast', async (req, res) => {
     res.status(500).json({ success: false, message: 'Weather service error', error: err.message });
   }
 });
-
 // One Call 3.0 summary (current + minutely + hourly + daily) by coords
 app.get('/api/weather/onecall', async (req, res) => {
   try {
@@ -134,7 +123,60 @@ app.get('/api/weather/onecall', async (req, res) => {
     res.status(500).json({ success: false, message: 'Weather service error', error: err.message });
   }
 });
-
+// ---------------- Authentication Endpoints (Backward Compatible) ----------------
+// Login endpoint - /api/auth/login (original endpoint)
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ success: false, message: 'Email and password required' });
+    }
+    const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+    if (result.rows.length === 0) {
+      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    }
+    const user = result.rows[0];
+    const validPassword = await bcrypt.compare(password, user.password);
+    if (!validPassword) {
+      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    }
+    res.json({
+      success: true,
+      message: 'Login successful',
+      user: { id: user.id, email: user.email, name: user.name }
+    });
+  } catch (err) {
+    console.error('Login error:', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+// Register endpoint - /api/auth/register (original endpoint)
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { email, password, name } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ success: false, message: 'Email and password required' });
+    }
+    const existingUser = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+    if (existingUser.rows.length > 0) {
+      return res.status(409).json({ success: false, message: 'User already exists' });
+    }
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const result = await pool.query(
+      'INSERT INTO users (email, password, name) VALUES ($1, $2, $3) RETURNING id, email, name',
+      [email, hashedPassword, name || null]
+    );
+    const newUser = result.rows[0];
+    res.status(201).json({
+      success: true,
+      message: 'User registered successfully',
+      user: { id: newUser.id, email: newUser.email, name: newUser.name }
+    });
+  } catch (err) {
+    console.error('Registration error:', err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
 // ---------------- Existing API and DB setup (truncated for brevity) ----------------
 // Migration script to clean and recreate database tables
 const runMigration = async () => {
@@ -143,10 +185,8 @@ const runMigration = async () => {
     // Drop existing tables (in reverse order due to foreign key constraints)
     await pool.query('DROP TABLE IF EXISTS farms CASCADE');
     console.log('Dropped farms table');
-
     await pool.query('DROP TABLE IF EXISTS users CASCADE');
     console.log('Dropped users table');
-
     // Create users table with name as optional field
     await pool.query(`
       CREATE TABLE users (
@@ -158,7 +198,6 @@ const runMigration = async () => {
       )
     `);
     console.log('Created users table (name is optional)');
-
     // Create farms table
     await pool.query(`
       CREATE TABLE farms (
@@ -172,13 +211,11 @@ const runMigration = async () => {
       )
     `);
     console.log('Created farms table');
-
   } catch (err) {
     console.error('Migration error:', err);
     throw err;
   }
 };
-
 // Example dashboard endpoint that now uses real weather for a farm
 app.get('/api/dashboard/:farmId', async (req, res) => {
   try {
@@ -192,12 +229,10 @@ app.get('/api/dashboard/:farmId', async (req, res) => {
     if (farm.latitude == null || farm.longitude == null) {
       return res.status(400).json({ success: false, message: 'Farm missing coordinates' });
     }
-
     const [current, forecast] = await Promise.all([
       owmGet('/weather', { lat: farm.latitude, lon: farm.longitude, units, lang }),
       owmGet('/forecast', { lat: farm.latitude, lon: farm.longitude, units, lang })
     ]);
-
     res.json({
       success: true,
       dashboard: {
@@ -211,13 +246,10 @@ app.get('/api/dashboard/:farmId', async (req, res) => {
     res.status(500).json({ success: false, message: 'Dashboard error', error: err.message });
   }
 });
-
 // Root route
 app.get('/', (req, res) => res.json({ message: 'API OK', status: 'running', version: '2.1.0' }));
-
 // Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
-
 module.exports = app;
