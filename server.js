@@ -2,9 +2,14 @@ const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
+const fetch = require('node-fetch');
 
 const app = express();
+app.use(cors());
+app.use(express.json());
+
 const PORT = process.env.PORT || 3000;
+const OWM_API_KEY = process.env.OWM_API_KEY || process.env.OPENWEATHER_API_KEY;
 
 // PostgreSQL connection pool
 const pool = new Pool({
@@ -12,18 +17,136 @@ const pool = new Pool({
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
+// ---------------- Weather Service Helpers ----------------
+const OWM_BASE = 'https://api.openweathermap.org/data/2.5';
+
+function buildQuery(params) {
+  return Object.entries(params)
+    .filter(([, v]) => v !== undefined && v !== null && v !== '')
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    .join('&');
+}
+
+async function owmGet(path, params) {
+  if (!OWM_API_KEY) throw new Error('OWM_API_KEY not configured');
+  const qs = buildQuery({ ...params, appid: OWM_API_KEY });
+  const url = `${OWM_BASE}${path}?${qs}`;
+  const resp = await fetch(url);
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`OpenWeatherMap error ${resp.status}: ${text}`);
+  }
+  return resp.json();
+}
+
+function normalizeCurrentWeather(d) {
+  return {
+    coord: d.coord,
+    weather: d.weather,
+    main: {
+      temp: d.main.temp,
+      feels_like: d.main.feels_like,
+      pressure: d.main.pressure,
+      humidity: d.main.humidity,
+      temp_min: d.main.temp_min,
+      temp_max: d.main.temp_max
+    },
+    wind: d.wind,
+    rain: d.rain,
+    snow: d.snow,
+    clouds: d.clouds,
+    sys: d.sys,
+    name: d.name,
+    dt: d.dt,
+    timezone: d.timezone
+  };
+}
+
+function normalizeForecast(d) {
+  return {
+    city: d.city,
+    cnt: d.cnt,
+    list: d.list.map(item => ({
+      dt: item.dt,
+      main: item.main,
+      weather: item.weather,
+      clouds: item.clouds,
+      wind: item.wind,
+      visibility: item.visibility,
+      pop: item.pop,
+      rain: item.rain,
+      snow: item.snow,
+      dt_txt: item.dt_txt
+    }))
+  };
+}
+
+// ---------------- Weather Endpoints ----------------
+// Current weather by coordinates or city
+app.get('/api/weather/current', async (req, res) => {
+  try {
+    const { lat, lon, city, units = 'metric', lang = 'fr' } = req.query;
+    let data;
+    if (lat && lon) {
+      data = await owmGet('/weather', { lat, lon, units, lang });
+    } else if (city) {
+      data = await owmGet('/weather', { q: city, units, lang });
+    } else {
+      return res.status(400).json({ success: false, message: 'Provide lat/lon or city' });
+    }
+    res.json({ success: true, data: normalizeCurrentWeather(data) });
+  } catch (err) {
+    console.error('Current weather error:', err);
+    res.status(500).json({ success: false, message: 'Weather service error', error: err.message });
+  }
+});
+
+// 5 day / 3 hour forecast by coordinates or city
+app.get('/api/weather/forecast', async (req, res) => {
+  try {
+    const { lat, lon, city, units = 'metric', lang = 'fr' } = req.query;
+    let data;
+    if (lat && lon) {
+      data = await owmGet('/forecast', { lat, lon, units, lang });
+    } else if (city) {
+      data = await owmGet('/forecast', { q: city, units, lang });
+    } else {
+      return res.status(400).json({ success: false, message: 'Provide lat/lon or city' });
+    }
+    res.json({ success: true, data: normalizeForecast(data) });
+  } catch (err) {
+    console.error('Forecast error:', err);
+    res.status(500).json({ success: false, message: 'Weather service error', error: err.message });
+  }
+});
+
+// One Call 3.0 summary (current + minutely + hourly + daily) by coords
+app.get('/api/weather/onecall', async (req, res) => {
+  try {
+    const { lat, lon, units = 'metric', lang = 'fr', exclude } = req.query;
+    if (!lat || !lon) {
+      return res.status(400).json({ success: false, message: 'Provide lat and lon' });
+    }
+    const data = await owmGet('/onecall', { lat, lon, units, lang, exclude });
+    res.json({ success: true, data });
+  } catch (err) {
+    console.error('OneCall error:', err);
+    res.status(500).json({ success: false, message: 'Weather service error', error: err.message });
+  }
+});
+
+// ---------------- Existing API and DB setup (truncated for brevity) ----------------
 // Migration script to clean and recreate database tables
 const runMigration = async () => {
   try {
     console.log('Starting database migration...');
-    
     // Drop existing tables (in reverse order due to foreign key constraints)
     await pool.query('DROP TABLE IF EXISTS farms CASCADE');
     console.log('Dropped farms table');
-    
+
     await pool.query('DROP TABLE IF EXISTS users CASCADE');
     console.log('Dropped users table');
-    
+
     // Create users table with name as optional field
     await pool.query(`
       CREATE TABLE users (
@@ -35,7 +158,7 @@ const runMigration = async () => {
       )
     `);
     console.log('Created users table (name is optional)');
-    
+
     // Create farms table
     await pool.query(`
       CREATE TABLE farms (
@@ -43,324 +166,54 @@ const runMigration = async () => {
         user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
         name VARCHAR(255) NOT NULL,
         location VARCHAR(255) NOT NULL,
-        size VARCHAR(100),
-        crops TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        latitude DOUBLE PRECISION,
+        longitude DOUBLE PRECISION,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
     console.log('Created farms table');
-    
-    console.log('Database migration completed successfully');
-  } catch (error) {
-    console.error('Error during migration:', error);
-    throw error;
+
+  } catch (err) {
+    console.error('Migration error:', err);
+    throw err;
   }
 };
 
-// Initialize database tables
-const initDB = async () => {
+// Example dashboard endpoint that now uses real weather for a farm
+app.get('/api/dashboard/:farmId', async (req, res) => {
   try {
-    // Run migration to ensure clean database state
-    await runMigration();
-    
-    console.log('Database initialization completed successfully');
-  } catch (error) {
-    console.error('Error initializing database:', error);
-  }
-};
-
-// Middleware
-app.use(cors());
-app.use(express.json());
-
-// Initialize database on startup
-initDB();
-
-// Health check route
-app.get('/api/health', async (req, res) => {
-  try {
-    await pool.query('SELECT 1');
-    res.json({ status: 'ok', message: 'Database connection successful' });
-  } catch (error) {
-    res.status(500).json({ status: 'error', message: 'Database connection failed' });
-  }
-});
-
-// User registration endpoint
-app.post('/api/register', async (req, res) => {
-  const { email, password, name } = req.body;
-  
-  if (!email || !password) {
-    return res.status(400).json({ 
-      success: false, 
-      message: 'Email and password are required' 
-    });
-  }
-  
-  try {
-    const hashedPassword = await bcrypt.hash(password, 10);
-    
-    const result = await pool.query(
-      'INSERT INTO users (email, password, name) VALUES ($1, $2, $3) RETURNING id, email, name, created_at',
-      [email, hashedPassword, name || null]
-    );
-    
-    res.status(201).json({ 
-      success: true, 
-      message: 'User registered successfully',
-      user: result.rows[0]
-    });
-  } catch (error) {
-    if (error.code === '23505') {
-      return res.status(409).json({ 
-        success: false, 
-        message: 'Email already exists' 
-      });
+    const { farmId } = req.params;
+    const { units = 'metric', lang = 'fr' } = req.query;
+    const farmRes = await pool.query('SELECT id, name, location, latitude, longitude FROM farms WHERE id = $1', [farmId]);
+    if (farmRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Farm not found' });
     }
-    console.error('Registration error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Server error during registration' 
-    });
-  }
-});
-
-// User login endpoint
-app.post('/api/login', async (req, res) => {
-  const { email, password } = req.body;
-  
-  if (!email || !password) {
-    return res.status(400).json({ 
-      success: false, 
-      message: 'Email and password are required' 
-    });
-  }
-  
-  try {
-    const result = await pool.query(
-      'SELECT * FROM users WHERE email = $1',
-      [email]
-    );
-    
-    if (result.rows.length === 0) {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'Invalid credentials' 
-      });
+    const farm = farmRes.rows[0];
+    if (farm.latitude == null || farm.longitude == null) {
+      return res.status(400).json({ success: false, message: 'Farm missing coordinates' });
     }
-    
-    const user = result.rows[0];
-    const passwordMatch = await bcrypt.compare(password, user.password);
-    
-    if (!passwordMatch) {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'Invalid credentials' 
-      });
-    }
-    
-    const { password: _, ...userWithoutPassword } = user;
-    
-    res.json({ 
-      success: true, 
-      message: 'Login successful',
-      user: userWithoutPassword
-    });
-  } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Server error during login' 
-    });
-  }
-});
 
-// Get user profile
-app.get('/api/users/:id', async (req, res) => {
-  const { id } = req.params;
-  
-  try {
-    const result = await pool.query(
-      'SELECT id, email, name, created_at FROM users WHERE id = $1',
-      [id]
-    );
-    
-    if (result.rows.length === 0) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'User not found' 
-      });
-    }
-    
-    res.json({ 
-      success: true, 
-      user: result.rows[0] 
-    });
-  } catch (error) {
-    console.error('Error fetching user:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Server error fetching user' 
-    });
-  }
-});
+    const [current, forecast] = await Promise.all([
+      owmGet('/weather', { lat: farm.latitude, lon: farm.longitude, units, lang }),
+      owmGet('/forecast', { lat: farm.latitude, lon: farm.longitude, units, lang })
+    ]);
 
-// Create farm
-app.post('/api/farms', async (req, res) => {
-  const { user_id, name, location, size, crops } = req.body;
-  
-  if (!user_id || !name || !location) {
-    return res.status(400).json({ 
-      success: false, 
-      message: 'User ID, name, and location are required' 
+    res.json({
+      success: true,
+      dashboard: {
+        farm,
+        weather: normalizeCurrentWeather(current),
+        forecast: normalizeForecast(forecast)
+      }
     });
-  }
-  
-  try {
-    const result = await pool.query(
-      'INSERT INTO farms (user_id, name, location, size, crops) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-      [user_id, name, location, size || null, crops || null]
-    );
-    
-    res.status(201).json({ 
-      success: true, 
-      message: 'Farm created successfully',
-      farm: result.rows[0]
-    });
-  } catch (error) {
-    console.error('Error creating farm:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Server error creating farm' 
-    });
-  }
-});
-
-// Get all farms for a user
-app.get('/api/users/:userId/farms', async (req, res) => {
-  const { userId } = req.params;
-  
-  try {
-    const result = await pool.query(
-      'SELECT * FROM farms WHERE user_id = $1 ORDER BY created_at DESC',
-      [userId]
-    );
-    
-    res.json({ 
-      success: true, 
-      farms: result.rows 
-    });
-  } catch (error) {
-    console.error('Error fetching farms:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Server error fetching farms' 
-    });
-  }
-});
-
-// Get single farm
-app.get('/api/farms/:id', async (req, res) => {
-  const { id } = req.params;
-  
-  try {
-    const result = await pool.query(
-      'SELECT * FROM farms WHERE id = $1',
-      [id]
-    );
-    
-    if (result.rows.length === 0) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Farm not found' 
-      });
-    }
-    
-    res.json({ 
-      success: true, 
-      farm: result.rows[0] 
-    });
-  } catch (error) {
-    console.error('Error fetching farm:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Server error fetching farm' 
-    });
-  }
-});
-
-// Update farm
-app.put('/api/farms/:id', async (req, res) => {
-  const { id } = req.params;
-  const { name, location, size, crops } = req.body;
-  
-  try {
-    const result = await pool.query(
-      `UPDATE farms 
-       SET name = COALESCE($1, name), 
-           location = COALESCE($2, location), 
-           size = COALESCE($3, size), 
-           crops = COALESCE($4, crops),
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = $5 
-       RETURNING *`,
-      [name, location, size, crops, id]
-    );
-    
-    if (result.rows.length === 0) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Farm not found' 
-      });
-    }
-    
-    res.json({ 
-      success: true, 
-      message: 'Farm updated successfully',
-      farm: result.rows[0]
-    });
-  } catch (error) {
-    console.error('Error updating farm:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Server error updating farm' 
-    });
-  }
-});
-
-// Delete farm
-app.delete('/api/farms/:id', async (req, res) => {
-  const { id } = req.params;
-  
-  try {
-    const result = await pool.query(
-      'DELETE FROM farms WHERE id = $1 RETURNING id',
-      [id]
-    );
-    
-    if (result.rows.length === 0) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Farm not found' 
-      });
-    }
-    
-    res.json({ 
-      success: true, 
-      message: 'Farm deleted successfully'
-    });
-  } catch (error) {
-    console.error('Error deleting farm:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Server error deleting farm' 
-    });
+  } catch (err) {
+    console.error('Dashboard error:', err);
+    res.status(500).json({ success: false, message: 'Dashboard error', error: err.message });
   }
 });
 
 // Root route
-app.get('/', (req, res) => res.json({message: "API OK", status: "running", version: "2.0.0"}));
+app.get('/', (req, res) => res.json({ message: 'API OK', status: 'running', version: '2.1.0' }));
 
 // Start server
 app.listen(PORT, () => {
