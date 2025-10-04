@@ -20,7 +20,7 @@ const initDB = async () => {
         id SERIAL PRIMARY KEY,
         email VARCHAR(255) UNIQUE NOT NULL,
         password VARCHAR(255) NOT NULL,
-        name VARCHAR(255) NOT NULL,
+        name VARCHAR(255),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -71,6 +71,7 @@ app.use(cors({
   },
   credentials: true
 }));
+
 app.use(express.json());
 
 // Auth routes
@@ -94,10 +95,10 @@ app.post('/api/auth/register', async (req, res) => {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
     
-    // Create new user
+    // Create new user - name can be null or undefined
     const result = await pool.query(
       'INSERT INTO users (email, password, name) VALUES ($1, $2, $3) RETURNING id, email, name, created_at',
-      [email, hashedPassword, name]
+      [email, hashedPassword, name || null]
     );
     
     res.status(201).json({ 
