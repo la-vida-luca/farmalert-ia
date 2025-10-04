@@ -15,22 +15,74 @@ app.use(express.static('public'));
 
 // API Routes
 
-// Récupérer tous les médicaments
-app.get('/api/medicaments', async (req, res) => {
+// Récupérer toutes les fermes
+app.get('/api/fermes', async (req, res) => {
   try {
-    const medicaments = await db.getAllMedicaments();
-    res.json(medicaments);
+    const fermes = await db.getAllFermes();
+    res.json(fermes);
   } catch (error) {
-    console.error('Erreur lors de la récupération des médicaments:', error);
+    console.error('Erreur lors de la récupération des fermes:', error);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
-// Récupérer les alertes d'un utilisateur
-app.get('/api/alertes/:userId', async (req, res) => {
+// Récupérer une ferme spécifique
+app.get('/api/fermes/:id', async (req, res) => {
   try {
-    const { userId } = req.params;
-    const alertes = await db.getAlertesByUser(userId);
+    const { id } = req.params;
+    const ferme = await db.getFermeById(id);
+    if (!ferme) {
+      return res.status(404).json({ error: 'Ferme non trouvée' });
+    }
+    res.json(ferme);
+  } catch (error) {
+    console.error('Erreur lors de la récupération de la ferme:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Créer une nouvelle ferme
+app.post('/api/fermes', async (req, res) => {
+  try {
+    const { nom, location, latitude, longitude, cultures, superficie } = req.body;
+    const ferme = await db.createFerme(nom, location, latitude, longitude, cultures, superficie);
+    res.status(201).json(ferme);
+  } catch (error) {
+    console.error('Erreur lors de la création de la ferme:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Mettre à jour une ferme
+app.put('/api/fermes/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { nom, location, latitude, longitude, cultures, superficie } = req.body;
+    const ferme = await db.updateFerme(id, nom, location, latitude, longitude, cultures, superficie);
+    res.json(ferme);
+  } catch (error) {
+    console.error('Erreur lors de la mise à jour de la ferme:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Supprimer une ferme
+app.delete('/api/fermes/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.deleteFerme(id);
+    res.status(204).send();
+  } catch (error) {
+    console.error('Erreur lors de la suppression de la ferme:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Récupérer les alertes météo d'une ferme
+app.get('/api/alertes/:fermeId', async (req, res) => {
+  try {
+    const { fermeId } = req.params;
+    const alertes = await db.getAlertesByFerme(fermeId);
     res.json(alertes);
   } catch (error) {
     console.error('Erreur lors de la récupération des alertes:', error);
@@ -38,138 +90,110 @@ app.get('/api/alertes/:userId', async (req, res) => {
   }
 });
 
-// Créer une nouvelle alerte
+// Créer une nouvelle alerte météo
 app.post('/api/alertes', async (req, res) => {
   try {
-    const { userId, medicamentId, seuil, email } = req.body;
-    
-    if (!userId || !medicamentId || !seuil) {
-      return res.status(400).json({ error: 'Données manquantes' });
-    }
-    
-    const id = await db.createAlerte(userId, medicamentId, seuil, email);
-    res.status(201).json({ id, message: 'Alerte créée avec succès' });
+    const { ferme_id, type_alerte, message, severite, date_debut, date_fin } = req.body;
+    const alerte = await db.createAlerte(ferme_id, type_alerte, message, severite, date_debut, date_fin);
+    res.status(201).json(alerte);
   } catch (error) {
     console.error('Erreur lors de la création de l\'alerte:', error);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
-// Supprimer une alerte
-app.delete('/api/alertes/:id', async (req, res) => {
+// Récupérer les données météo pour une ferme
+app.get('/api/meteo/:fermeId', async (req, res) => {
   try {
-    const { id } = req.params;
-    await db.deleteAlerte(id);
-    res.json({ message: 'Alerte supprimée avec succès' });
-  } catch (error) {
-    console.error('Erreur lors de la suppression de l\'alerte:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-// Rechercher des médicaments dans l'API publique
-app.get('/api/search', async (req, res) => {
-  try {
-    const { q } = req.query;
+    const { fermeId } = req.params;
+    const ferme = await db.getFermeById(fermeId);
     
-    if (!q || q.length < 3) {
-      return res.json([]);
+    if (!ferme) {
+      return res.status(404).json({ error: 'Ferme non trouvée' });
     }
+
+    // Appel à l'API météo (exemple avec OpenWeatherMap)
+    const apiKey = process.env.OPENWEATHER_API_KEY;
+    const weatherUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${ferme.latitude}&lon=${ferme.longitude}&appid=${apiKey}&units=metric&lang=fr`;
     
-    // Recherche dans l'API Open Medicaments
-    const response = await axios.get(
-      `https://open-medicaments.fr/api/v1/medicaments`,
-      {
-        params: {
-          query: q,
-          limit: 20
-        }
-      }
-    );
-    
+    const response = await axios.get(weatherUrl);
     res.json(response.data);
   } catch (error) {
-    console.error('Erreur lors de la recherche:', error);
-    res.status(500).json({ error: 'Erreur lors de la recherche' });
-  }
-});
-
-// Vérifier les stocks et déclencher les alertes
-app.post('/api/check-stocks', async (req, res) => {
-  try {
-    const alertes = await db.getAllAlertes();
-    const triggered = [];
-    
-    for (const alerte of alertes) {
-      // Simuler une vérification de stock (à remplacer par une vraie API)
-      const stockActuel = Math.floor(Math.random() * 100);
-      
-      if (stockActuel <= alerte.seuil && alerte.active) {
-        triggered.push({
-          alerteId: alerte.id,
-          medicament: alerte.nom_medicament,
-          stockActuel,
-          seuil: alerte.seuil,
-          email: alerte.email
-        });
-        
-        // Désactiver l'alerte temporairement
-        await db.updateAlerteStatus(alerte.id, false);
-      }
-    }
-    
-    res.json({ 
-      message: 'Vérification terminée',
-      alertesDeclenchees: triggered.length,
-      details: triggered
-    });
-  } catch (error) {
-    console.error('Erreur lors de la vérification des stocks:', error);
+    console.error('Erreur lors de la récupération des données météo:', error);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
-// Route de test
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+// Récupérer les prévisions météo pour une ferme
+app.get('/api/meteo/previsions/:fermeId', async (req, res) => {
+  try {
+    const { fermeId } = req.params;
+    const ferme = await db.getFermeById(fermeId);
+    
+    if (!ferme) {
+      return res.status(404).json({ error: 'Ferme non trouvée' });
+    }
+
+    // Appel à l'API météo pour les prévisions
+    const apiKey = process.env.OPENWEATHER_API_KEY;
+    const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?lat=${ferme.latitude}&lon=${ferme.longitude}&appid=${apiKey}&units=metric&lang=fr`;
+    
+    const response = await axios.get(forecastUrl);
+    res.json(response.data);
+  } catch (error) {
+    console.error('Erreur lors de la récupération des prévisions météo:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
 });
 
-// Servir le frontend
-app.get('*', (req, res) => {
+// Analyse IA des conditions de culture
+app.post('/api/analyse-culture', async (req, res) => {
+  try {
+    const { fermeId, culture, conditions } = req.body;
+    // Ici vous pourrez intégrer votre logique IA pour l'analyse
+    // Pour l'instant, retour d'un exemple de réponse
+    const analyse = {
+      culture,
+      recommandations: [
+        'Irrigation recommandée dans les 48h',
+        'Risque de gel prévu - protection nécessaire',
+        'Conditions optimales pour la récolte'
+      ],
+      score_sante: 85,
+      actions_prioritaires: ['Vérifier l\'humidité du sol', 'Surveiller les prévisions de gel']
+    };
+    res.json(analyse);
+  } catch (error) {
+    console.error('Erreur lors de l\'analyse de culture:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Route de base
+app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Initialisation et démarrage du serveur
+// Démarrage du serveur
 async function startServer() {
   try {
-    // Exécuter la migration au démarrage
-    console.log('Exécution de la migration de la base de données...');
+    console.log('🚀 Démarrage de FarmAlert IA...');
+    
+    // Exécution des migrations
+    console.log('📦 Exécution des migrations de la base de données...');
     await migrate();
-    console.log('Migration terminée avec succès');
+    console.log('✅ Migrations terminées avec succès');
     
-    // Initialiser la base de données
-    await db.init();
-    console.log('Base de données initialisée');
-    
-    // Démarrer le serveur
+    // Démarrage du serveur Express
     app.listen(PORT, () => {
-      console.log(`Serveur démarré sur le port ${PORT}`);
-      console.log(`Interface disponible sur http://localhost:${PORT}`);
+      console.log(`✅ Serveur FarmAlert IA démarré sur le port ${PORT}`);
+      console.log(`🌐 Accès: http://localhost:${PORT}`);
+      console.log('🌾 Système de monitoring agricole opérationnel');
     });
   } catch (error) {
-    console.error('Erreur lors du démarrage du serveur:', error);
+    console.error('❌ Erreur lors du démarrage du serveur:', error);
     process.exit(1);
   }
 }
 
-// Démarrer le serveur
 startServer();
-
-// Gestion de l'arrêt propre
-process.on('SIGINT', async () => {
-  console.log('\nArrêt du serveur...');
-  await db.close();
-  process.exit(0);
-});
-
-module.exports = app;
