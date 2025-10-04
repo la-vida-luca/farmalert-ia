@@ -1,7 +1,51 @@
 const express = require('express');
 const cors = require('cors');
+const { Pool } = require('pg');
+const bcrypt = require('bcrypt');
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// PostgreSQL connection pool
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+});
+
+// Initialize database tables
+const initDB = async () => {
+  try {
+    // Create users table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password VARCHAR(255) NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    // Create farms table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS farms (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        location VARCHAR(255) NOT NULL,
+        size VARCHAR(100),
+        crops TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    console.log('Database tables initialized successfully');
+  } catch (error) {
+    console.error('Error initializing database:', error);
+  }
+};
+
+initDB();
 
 // Middleware
 app.use(cors({
@@ -27,140 +71,239 @@ app.use(cors({
   },
   credentials: true
 }));
-
 app.use(express.json());
 
-// In-memory storage for demo purposes
-const users = [];
-const farms = [];
-
 // Auth routes
-app.post('/api/auth/register', (req, res) => {
+app.post('/api/auth/register', async (req, res) => {
   const { email, password, name } = req.body;
   
-  // Check if user already exists
-  const existingUser = users.find(u => u.email === email);
-  
-  if (existingUser) {
-    return res.status(400).json({ 
+  try {
+    // Check if user already exists
+    const existingUser = await pool.query(
+      'SELECT * FROM users WHERE email = $1',
+      [email]
+    );
+    
+    if (existingUser.rows.length > 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'User already exists' 
+      });
+    }
+    
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
+    // Create new user
+    const result = await pool.query(
+      'INSERT INTO users (email, password, name) VALUES ($1, $2, $3) RETURNING id, email, name, created_at',
+      [email, hashedPassword, name]
+    );
+    
+    res.status(201).json({ 
+      success: true, 
+      message: 'User registered successfully',
+      user: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Registration error:', error);
+    res.status(500).json({ 
       success: false, 
-      message: 'User already exists' 
+      message: 'Server error during registration' 
     });
   }
-  
-  const newUser = {
-    id: users.length + 1,
-    email,
-    password, // In production, hash this!
-    name,
-    createdAt: new Date()
-  };
-  
-  users.push(newUser);
-  
-  res.status(201).json({ 
-    success: true, 
-    message: 'User registered successfully',
-    user: { id: newUser.id, email: newUser.email, name: newUser.name }
-  });
 });
 
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body;
   
-  const user = users.find(u => u.email === email && u.password === password);
-  
-  if (!user) {
-    return res.status(401).json({ 
+  try {
+    // Find user
+    const result = await pool.query(
+      'SELECT * FROM users WHERE email = $1',
+      [email]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Invalid email or password' 
+      });
+    }
+    
+    const user = result.rows[0];
+    
+    // Verify password
+    const isValidPassword = await bcrypt.compare(password, user.password);
+    
+    if (!isValidPassword) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Invalid email or password' 
+      });
+    }
+    
+    // Return user without password
+    const { password: _, ...userWithoutPassword } = user;
+    
+    res.json({ 
+      success: true, 
+      message: 'Login successful',
+      user: userWithoutPassword
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ 
       success: false, 
-      message: 'Invalid credentials' 
+      message: 'Server error during login' 
     });
   }
-  
-  res.json({ 
-    success: true, 
-    message: 'Login successful',
-    token: "sample-jwt-token-" + user.id,
-    user: { id: user.id, email: user.email, name: user.name }
-  });
 });
 
 // Farm routes
-app.get('/api/farms', (req, res) => {
-  res.json({ 
-    success: true, 
-    farms 
-  });
-});
-
-app.post('/api/farms', (req, res) => {
-  const { name, location, size, crops } = req.body;
+app.post('/api/farms', async (req, res) => {
+  const { name, location, size, crops, userId } = req.body;
   
-  const newFarm = {
-    id: farms.length + 1,
-    name,
-    location,
-    size,
-    crops,
-    createdAt: new Date(),
-    updatedAt: new Date()
-  };
-  
-  farms.push(newFarm);
-  
-  res.status(201).json({ 
-    success: true, 
-    farm: newFarm 
-  });
-});
-
-app.put('/api/farms/:id', (req, res) => {
-  const farmIndex = farms.findIndex(f => f.id === parseInt(req.params.id));
-  
-  if (farmIndex === -1) {
-    return res.status(404).json({ 
+  try {
+    const result = await pool.query(
+      'INSERT INTO farms (user_id, name, location, size, crops) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [userId, name, location, size, crops]
+    );
+    
+    res.status(201).json({ 
+      success: true, 
+      message: 'Farm created successfully',
+      farm: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Error creating farm:', error);
+    res.status(500).json({ 
       success: false, 
-      message: 'Farm not found'
+      message: 'Server error creating farm' 
     });
   }
-  
-  const { name, location, size, crops } = req.body;
-  farms[farmIndex] = {
-    ...farms[farmIndex],
-    name: name || farms[farmIndex].name,
-    location: location || farms[farmIndex].location,
-    size: size || farms[farmIndex].size,
-    crops: crops || farms[farmIndex].crops,
-    updatedAt: new Date()
-  };
-  
-  res.json({ 
-    success: true, 
-    message: 'Farm updated successfully',
-    farm: farms[farmIndex]
-  });
 });
 
-app.delete('/api/farms/:id', (req, res) => {
-  const farmIndex = farms.findIndex(f => f.id === parseInt(req.params.id));
+app.get('/api/farms', async (req, res) => {
+  const { userId } = req.query;
   
-  if (farmIndex === -1) {
-    return res.status(404).json({ 
+  try {
+    let result;
+    if (userId) {
+      result = await pool.query(
+        'SELECT * FROM farms WHERE user_id = $1 ORDER BY created_at DESC',
+        [userId]
+      );
+    } else {
+      result = await pool.query(
+        'SELECT * FROM farms ORDER BY created_at DESC'
+      );
+    }
+    
+    res.json({ 
+      success: true, 
+      farms: result.rows 
+    });
+  } catch (error) {
+    console.error('Error fetching farms:', error);
+    res.status(500).json({ 
       success: false, 
-      message: 'Farm not found'
+      message: 'Server error fetching farms' 
     });
   }
+});
+
+app.get('/api/farms/:id', async (req, res) => {
+  const { id } = req.params;
   
-  farms.splice(farmIndex, 1);
+  try {
+    const result = await pool.query(
+      'SELECT * FROM farms WHERE id = $1',
+      [id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Farm not found' 
+      });
+    }
+    
+    res.json({ 
+      success: true, 
+      farm: result.rows[0] 
+    });
+  } catch (error) {
+    console.error('Error fetching farm:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error fetching farm' 
+    });
+  }
+});
+
+app.put('/api/farms/:id', async (req, res) => {
+  const { id } = req.params;
+  const { name, location, size, crops } = req.body;
   
-  res.json({ 
-    success: true, 
-    message: 'Farm deleted successfully'
-  });
+  try {
+    const result = await pool.query(
+      'UPDATE farms SET name = COALESCE($1, name), location = COALESCE($2, location), size = COALESCE($3, size), crops = COALESCE($4, crops), updated_at = CURRENT_TIMESTAMP WHERE id = $5 RETURNING *',
+      [name, location, size, crops, id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Farm not found' 
+      });
+    }
+    
+    res.json({ 
+      success: true, 
+      message: 'Farm updated successfully',
+      farm: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Error updating farm:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error updating farm' 
+    });
+  }
+});
+
+app.delete('/api/farms/:id', async (req, res) => {
+  const { id } = req.params;
+  
+  try {
+    const result = await pool.query(
+      'DELETE FROM farms WHERE id = $1 RETURNING id',
+      [id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Farm not found' 
+      });
+    }
+    
+    res.json({ 
+      success: true, 
+      message: 'Farm deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting farm:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error deleting farm' 
+    });
+  }
 });
 
 // Root route
-app.get('/', (req, res) => res.json({message: "API OK", status: "running", version: "1.0.0"}));
+app.get('/', (req, res) => res.json({message: "API OK", status: "running", version: "2.0.0"}));
 
 // Start server
 app.listen(PORT, () => {
